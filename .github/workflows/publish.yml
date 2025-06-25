@@ -13,8 +13,6 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/p/umbrix-mcp
-    permissions:
-      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +32,7 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
           print-hash: true
           # Remove these to publish to PyPI (currently set for TestPyPI)
           # repository-url: https://test.pypi.org/legacy/
