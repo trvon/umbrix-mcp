@@ -1,10 +1,8 @@
 """Tests for Umbrix MCP Server"""
 
 import pytest
-import json
 from unittest.mock import AsyncMock, patch
 from umbrix_mcp.server import UmbrixClient
-from mcp.types import Tool, TextContent
 
 
 @pytest.fixture
@@ -194,14 +192,14 @@ async def test_graph_statistics_tool():
         assert "Source Nodes: 250" in result
 
 
-def create_mock_response(json_data):
+def create_mock_response(response_data):
     """Helper to create a mock response that works with httpx"""
     class MockResponse:
         def raise_for_status(self):
             pass
         
         def json(self):
-            return json_data
+            return response_data
     
     return MockResponse()
 

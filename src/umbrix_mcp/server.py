@@ -8,7 +8,7 @@ import os
 import sys
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Optional
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -230,7 +230,7 @@ async def get_threat_actor(actor_name: str, ctx: Context) -> str:
                     summary += f"  ... and {len(infrastructure) - 5} more\n"
             
             if tactics:
-                summary += f"\nTactics & Techniques:\n"
+                summary += "\nTactics & Techniques:\n"
                 for tactic in tactics[:5]:  # Show first 5
                     summary += f"  • {tactic}\n"
                 if len(tactics) > 5:
@@ -294,11 +294,11 @@ async def visualize_threat_graph(query: str, ctx: Context) -> str:
             
             if relationships:
                 unique_relationships = list(set(relationships))
-                summary += f"\nRelationship Types:\n"
+                summary += "\nRelationship Types:\n"
                 for rel_type in unique_relationships[:5]:
                     summary += f"  • {rel_type}\n"
             
-            summary += f"\nNote: Use the graph visualization interface at /visualize.html for interactive exploration."
+            summary += "\nNote: Use the graph visualization interface at /visualize.html for interactive exploration."
             summary += f"\nCypher query used: {cypher_query}"
             
             return summary

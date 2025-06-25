@@ -1,8 +1,6 @@
 """Test CLI functionality"""
 
 import pytest
-import sys
-from unittest.mock import patch
 
 
 def test_import_server():
@@ -19,7 +17,6 @@ def test_umbrix_client_exists():
 
 def test_main_requires_api_key():
     """Test that server initialization requires API key"""
-    import umbrix_mcp.server
     import os
     
     # Temporarily remove API key if it exists
@@ -36,7 +33,7 @@ def test_main_requires_api_key():
             
             # Mock the lifespan to trigger the check
             async def test_lifespan():
-                async with app_lifespan(mcp) as ctx:
+                async with app_lifespan(mcp):
                     pass
             
             asyncio.run(test_lifespan())
