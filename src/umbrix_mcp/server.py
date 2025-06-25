@@ -98,8 +98,7 @@ async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/intelligent_query",
             json={
-                "question": f"Search for threats related to: {query}",
-                "apiKey": umbrix_client.api_key
+                "question": f"Search for threats related to: {query}"
             }
         )
         response.raise_for_status()
@@ -152,8 +151,7 @@ async def analyze_indicator(indicator: str, ctx: Context, indicator_type: str = 
             json={
                 "indicator": indicator,
                 "indicator_type": indicator_type,
-                "include_context": True,
-                "apiKey": umbrix_client.api_key
+                "include_context": True
             }
         )
         response.raise_for_status()
@@ -201,8 +199,7 @@ async def get_threat_actor(actor_name: str, ctx: Context) -> str:
                 "campaign_or_actor": actor_name,
                 "analysis_type": "threat_actor",
                 "include_infrastructure": True,
-                "include_tactics": True,
-                "apiKey": umbrix_client.api_key
+                "include_tactics": True
             }
         )
         response.raise_for_status()
@@ -265,8 +262,7 @@ async def visualize_threat_graph(query: str, ctx: Context) -> str:
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/graph_query",
             json={
-                "cypher_query": cypher_query,
-                "apiKey": umbrix_client.api_key
+                "cypher_query": cypher_query
             }
         )
         response.raise_for_status()
@@ -346,8 +342,7 @@ async def quick_ioc_check(ioc: str, ctx: Context) -> str:
                 "indicator": ioc,
                 "indicator_type": indicator_type,
                 "include_context": True,
-                "quick_check": True,
-                "apiKey": umbrix_client.api_key
+                "quick_check": True
             }
         )
         response.raise_for_status()
@@ -421,7 +416,7 @@ async def graph_statistics(ctx: Context) -> str:
         logger.info("Fetching graph statistics")
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/graph_statistics",
-            json={"apiKey": umbrix_client.api_key}
+            json={}
         )
         response.raise_for_status()
         result = response.json()
@@ -461,8 +456,7 @@ async def execute_graph_query(cypher_query: str, ctx: Context) -> str:
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/graph_query",
             json={
-                "cypher_query": cypher_query,
-                "apiKey": umbrix_client.api_key
+                "cypher_query": cypher_query
             }
         )
         response.raise_for_status()
@@ -510,8 +504,7 @@ async def feed_management(action: str, ctx: Context, feed_url: str = "") -> str:
                 json={
                     "status_filter": "all",
                     "include_metrics": True,
-                    "include_recent_items": False,
-                    "apiKey": umbrix_client.api_key
+                    "include_recent_items": False
                 }
             )
             response.raise_for_status()
@@ -550,8 +543,7 @@ async def feed_management(action: str, ctx: Context, feed_url: str = "") -> str:
                     "title": None,
                     "description": "Added via MCP tool",
                     "requires_auth": False,
-                    "payment_required": False,
-                    "apiKey": umbrix_client.api_key
+                    "payment_required": False
                 }
             )
             response.raise_for_status()
@@ -579,8 +571,7 @@ async def system_health(ctx: Context) -> str:
             f"{umbrix_client.base_url}/v1/tools/system_health",
             json={
                 "component": "all",
-                "include_metrics": True,
-                "apiKey": umbrix_client.api_key
+                "include_metrics": True
             }
         )
         response.raise_for_status()
@@ -627,8 +618,7 @@ async def threat_intel_chat(question: str, ctx: Context) -> str:
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/intelligent_query",
             json={
-                "question": question,
-                "apiKey": umbrix_client.api_key
+                "question": question
             }
         )
         response.raise_for_status()
