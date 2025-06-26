@@ -97,13 +97,17 @@ async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
     try:
         logger.info(f"Searching threats: {query}")
         response = await umbrix_client.client.post(
-            f"{umbrix_client.base_url}/v1/tools/intelligent_query",
-            json={"question": f"Search for threats related to: {query}"},
+            f"{umbrix_client.base_url}/v1/tools/intelligent_graph_query",
+            json={
+                "query": f"Search for threats related to: {query}",
+                "query_type": "natural_language",
+                "max_results": limit,
+            },
         )
         response.raise_for_status()
         result = response.json()
 
-        if result.get("success"):
+        if result.get("status") == "success":
             data = result.get("data", {})
             answer = data.get("answer", "No results found")
             graph_results = data.get("graph_results", [])
@@ -117,7 +121,7 @@ async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
 
             return summary
         else:
-            return f"Error: {result.get('error', 'Search failed')}"
+            return f"Error: {result.get('message', 'Search failed')}"
     except Exception as e:
         logger.error(f"Error searching threats: {e}")
         return f"Error: {str(e)}"
@@ -148,9 +152,9 @@ async def analyze_indicator(
                 indicator_type = "unknown"
 
         response = await umbrix_client.client.post(
-            f"{umbrix_client.base_url}/v1/tools/indicator_lookup",
+            f"{umbrix_client.base_url}/v1/tools/get_indicator_details",
             json={
-                "indicator": indicator,
+                "indicator_value": indicator,
                 "indicator_type": indicator_type,
                 "include_context": True,
             },
@@ -158,7 +162,7 @@ async def analyze_indicator(
         response.raise_for_status()
         result = response.json()
 
-        if result.get("success"):
+        if result.get("status") == "success":
             data = result.get("data", {})
             indicator_info = data.get("indicator_info", {})
             threat_context = data.get("threat_context", {})
@@ -579,7 +583,7 @@ async def system_health(ctx: Context) -> str:
         response.raise_for_status()
         result = response.json()
 
-        if result.get("success"):
+        if result.get("status") == "success":
             health = result.get("data", {})
             overall_status = health.get("overall_status", "unknown")
             components = health.get("components", {})
@@ -616,13 +620,17 @@ async def threat_intel_chat(question: str, ctx: Context) -> str:
     try:
         logger.info(f"Processing threat intelligence question: {question}")
         response = await umbrix_client.client.post(
-            f"{umbrix_client.base_url}/v1/tools/intelligent_query",
-            json={"question": question},
+            f"{umbrix_client.base_url}/v1/tools/intelligent_graph_query",
+            json={
+                "query": question,
+                "query_type": "natural_language",
+                "max_results": 10,
+            },
         )
         response.raise_for_status()
         result = response.json()
 
-        if result.get("success"):
+        if result.get("status") == "success":
             data = result.get("data", {})
             answer = data.get("answer", "No response received")
             cypher_query = data.get("cypher_query")

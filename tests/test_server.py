@@ -37,7 +37,7 @@ async def test_search_threats_tool():
         mock_client.client = mock_http_client
         mock_http_client.post.return_value = create_mock_response(
             {
-                "success": True,
+                "status": "success",
                 "data": {
                     "answer": "Found 2 threats related to APT28",
                     "graph_results": [
@@ -55,8 +55,12 @@ async def test_search_threats_tool():
 
         # Verify correct endpoint was called
         mock_http_client.post.assert_called_once_with(
-            f"{mock_client.base_url}/v1/tools/intelligent_query",
-            json={"question": "Search for threats related to: APT28"},
+            f"{mock_client.base_url}/v1/tools/intelligent_graph_query",
+            json={
+                "query": "Search for threats related to: APT28",
+                "query_type": "natural_language",
+                "max_results": 10,
+            },
         )
 
         # Verify response formatting
@@ -77,7 +81,7 @@ async def test_analyze_indicator_tool():
         mock_client.client = mock_http_client
         mock_http_client.post.return_value = create_mock_response(
             {
-                "success": True,
+                "status": "success",
                 "data": {
                     "indicator_info": {
                         "status": "malicious",
@@ -99,9 +103,9 @@ async def test_analyze_indicator_tool():
 
         # Verify correct endpoint was called
         mock_http_client.post.assert_called_once_with(
-            f"{mock_client.base_url}/v1/tools/indicator_lookup",
+            f"{mock_client.base_url}/v1/tools/get_indicator_details",
             json={
-                "indicator": "evil.com",
+                "indicator_value": "evil.com",
                 "indicator_type": "domain",
                 "include_context": True,
             },
@@ -224,7 +228,7 @@ async def test_system_health_tool():
         mock_client.client = mock_http_client
         mock_http_client.post.return_value = create_mock_response(
             {
-                "success": True,
+                "status": "success",
                 "data": {
                     "overall_status": "healthy",
                     "components": {
@@ -306,7 +310,7 @@ async def test_threat_intel_chat_tool():
 
         mock_http_client.post.return_value = create_mock_response(
             {
-                "success": True,
+                "status": "success",
                 "data": {
                     "answer": "APT28 is a Russian cyber espionage group known for sophisticated attacks.",
                     "confidence": 0.92,
@@ -323,8 +327,12 @@ async def test_threat_intel_chat_tool():
 
         # Verify correct endpoint was called
         mock_http_client.post.assert_called_once_with(
-            f"{mock_client.base_url}/v1/tools/intelligent_query",
-            json={"question": "Tell me about APT28"},
+            f"{mock_client.base_url}/v1/tools/intelligent_graph_query",
+            json={
+                "query": "Tell me about APT28",
+                "query_type": "natural_language",
+                "max_results": 10,
+            },
         )
 
         # Verify response formatting
