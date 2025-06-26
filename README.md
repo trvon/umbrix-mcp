@@ -40,19 +40,31 @@ docker build -t umbrix-mcp:latest .
 
 ##  Available Tools
 
-### Threat Intelligence (5 tools)
-- **search_threats** - Search across all threat intelligence sources
-- **analyze_indicator** - Analyze IPs, domains, hashes, URLs
-- **get_threat_actor** - Get detailed threat actor information
-- **visualize_threat_graph** - Generate threat relationship visualizations  
-- **quick_ioc_check** - Instant IoC maliciousness verification
+### Core Intelligence Analysis (5 tools)
+- **search_threats** - Search across all threat intelligence sources using natural language
+- **analyze_indicator** - Analyze IPs, domains, hashes, URLs with full STIX details
+- **get_threat_actor** - Get detailed threat actor profiles and attribution
+- **threat_intel_chat** - Natural language Q&A about threats with graph context
+- **execute_graph_query** - Run Cypher queries against the threat intelligence graph
 
-### Backend Integration (5 tools)
-- **graph_statistics** - Get live graph database statistics
-- **execute_graph_query** - Run Cypher queries against the threat graph
-- **feed_management** - Manage threat intelligence feeds
-- **system_health** - Check system component health status
-- **threat_intel_chat** - Natural language Q&A about threats
+### Entity Details (4 tools)
+- **get_malware_details** - Detailed malware analysis and family information
+- **get_campaign_details** - Threat campaign analysis and attribution
+- **get_attack_pattern_details** - MITRE ATT&CK technique details and usage
+- **get_vulnerability_details** - CVE details, CVSS scores, and exploitation data
+
+### Threat Analysis & Correlation (6 tools)
+- **threat_correlation** - Find relationships between threat entities
+- **indicator_reputation** - Multi-source reputation scoring for indicators
+- **threat_actor_attribution** - Attribute indicators to threat actors
+- **ioc_validation** - Validate and enrich indicators with context
+- **network_analysis** - Analyze network ranges for threat intelligence
+- **timeline_analysis** - Analyze threat activity over time periods
+
+### Threat Hunting & Reporting (3 tools)
+- **threat_hunting_query_builder** - Generate threat hunting queries
+- **report_generation** - Generate threat intelligence reports
+- **system_health_check** - Check system component health and metrics
 
 ##  Development
 
