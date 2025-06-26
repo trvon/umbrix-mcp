@@ -15,7 +15,7 @@ Add to your `claude_desktop_config.json`:
         "run", "-i", "--rm",
         "-e", "UMBRIX_API_KEY",
         "-e", "UMBRIX_API_BASE_URL", 
-        "umbrix-mcp:latest"
+        "ghcr.io/trvon/umbrix-mcp:latest"
       ],
       "env": {
         "UMBRIX_API_KEY": "your-api-key-here",
