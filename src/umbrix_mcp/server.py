@@ -2,6 +2,38 @@
 """
 Umbrix MCP Server
 Provides threat intelligence capabilities to AI assistants via MCP protocol
+
+TOOL SELECTION GUIDE FOR LLMs:
+===============================
+
+🔍 DISCOVERY & EXPLORATION:
+- discover_recent_threats: Start here! Shows latest activity and data overview
+- search_threats: Find specific threats, actors, malware with fallback strategies
+- system_health_check: Verify platform status when other tools fail
+
+💬 ANALYSIS & INTELLIGENCE:
+- threat_intel_chat: Analytical questions and strategic intelligence
+- analyze_indicator: Deep analysis of specific IOCs (IPs, domains, hashes)
+- get_threat_actor: Detailed profiles of specific threat actors
+- get_malware_details: Comprehensive malware family analysis
+- get_campaign_details: In-depth campaign and operation intelligence
+
+🔧 ADVANCED QUERIES:
+- execute_graph_query: Direct Cypher queries for custom analysis
+- threat_correlation: Find connections between entities
+- timeline_analysis: Temporal patterns and activity analysis
+
+📊 SPECIALIZED TOOLS:
+- indicator_reputation: Reputation scoring for IOCs
+- network_analysis: Analyze IP ranges and networks
+- threat_actor_attribution: Attribute indicators to actors
+- ioc_validation: Validate and enrich indicators
+
+RECOMMENDED WORKFLOW:
+1. Start with discover_recent_threats to see available data
+2. Use search_threats for specific entities or topics
+3. Deep dive with specialized tools (analyze_indicator, get_threat_actor, etc.)
+4. Use threat_intel_chat for analytical questions
 """
 
 import os
@@ -87,21 +119,109 @@ mcp = FastMCP("umbrix-mcp", lifespan=app_lifespan)
 
 
 @mcp.tool()
-async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
-    """Search for threat intelligence across all data sources using natural language
+async def discover_recent_threats(ctx: Context, days_back: int = 30) -> str:
+    """Discover recent threat activity and latest attacks
+
+    This tool automatically finds the most recent threats, indicators, and articles
+    without requiring specific search terms. Perfect for "what are the latest attacks?"
 
     Args:
-        query: Natural language search query (threat actor, campaign, malware, etc.)
-        limit: Maximum number of results to return (default: 10)
+        days_back: Number of days to look back (default: 30)
     """
     try:
-        logger.info(f"Searching threats: {query}")
+        logger.info(f"Discovering recent threats for the last {days_back} days")
+
+        # Use direct Cypher queries that we know work well
+        recent_articles_query = f"""
+        MATCH (a:Article) 
+        WHERE a.timestamp IS NOT NULL 
+        AND datetime(a.timestamp) >= datetime() - duration({{days: {days_back}}})
+        RETURN a.title, a.timestamp, a.summary, a.url
+        ORDER BY a.timestamp DESC 
+        LIMIT 15
+        """
+
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+            json={"cypher_query": recent_articles_query},
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("status") == "success":
+            data = result.get("data", {})
+            results = data.get("results", "")
+            count = data.get("count", 0)
+
+            if count > 0:
+                summary = f"🔍 Recent Threat Intelligence (Last {days_back} Days)\n"
+                summary += f"Found {count} recent articles and threats:\n\n"
+
+                # Parse the results to format them nicely
+                import json as json_mod
+
+                try:
+                    if results.startswith("[") and results.endswith("]"):
+                        articles = json_mod.loads(results)
+                        for i, article in enumerate(articles[:10], 1):
+                            title = article.get("a.title", "Unknown")
+                            timestamp = article.get("a.timestamp", "")[:10]  # Just date
+                            summary += f"{i}. {title}\n"
+                            if timestamp:
+                                summary += f"   📅 {timestamp}\n"
+                            summary += "\n"
+
+                        if len(articles) > 10:
+                            summary += (
+                                f"... and {len(articles) - 10} more recent threats\n"
+                            )
+                    else:
+                        summary += results
+
+                except Exception:
+                    summary += results
+
+                summary += "\n💡 For specific details, use get_threat_actor, analyze_indicator, or execute_graph_query tools."
+                return summary
+            else:
+                return "No recent threat activity found in the specified timeframe."
+        else:
+            return f"Error discovering threats: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error(f"Error discovering recent threats: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
+    """Search for threat intelligence using multiple fallback strategies to maximize success
+
+    This tool tries multiple approaches to find threat data:
+    1. Natural language search via intelligent_graph_query
+    2. Direct graph queries for common patterns
+    3. Keyword-based fallback searches
+    4. Query suggestions when no results found
+
+    Use this when you want to find threat actors, campaigns, malware, indicators, or security events.
+    If this doesn't find results, try discover_recent_threats for latest activity.
+
+    Args:
+        query: Search query (e.g., "APT29", "ransomware campaigns", "Russian threat actors")
+        limit: Maximum number of results to return (default: 10, max: 50)
+    """
+    try:
+        logger.info(f"Enhanced threat search: {query}")
+
+        # Try intelligent search first with increased limit for better results
+        search_limit = min(max(limit, 20), 50)  # Use at least 20, max 50
+
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/intelligent_graph_query",
             json={
                 "query": query,
                 "query_type": "natural_language",
-                "max_results": limit,
+                "max_results": search_limit,
             },
         )
         response.raise_for_status()
@@ -109,37 +229,67 @@ async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
 
         if result.get("status") == "success":
             data = result.get("data", {})
-            answer = data.get("answer", "No results found")
+            answer = data.get("answer", "")
             graph_results = data.get("graph_results", [])
             confidence = data.get("confidence", 0)
 
-            summary = f"Threat Intelligence Search Results:\n\n{answer}"
-
-            if confidence:
-                summary += f"\n\nConfidence: {confidence:.1%}"
-
-            if graph_results:
+            # Check if we got meaningful results
+            if graph_results and len(graph_results) > 0:
+                summary = f"Threat Intelligence Search Results:\n\n{answer}"
+                if confidence:
+                    summary += f"\n\nConfidence: {confidence:.1%}"
                 summary += "\n\nRelevant Threats Found:"
                 for i, item in enumerate(graph_results[:limit], 1):
                     summary += f"\n{i}. {item}"
+                return summary
 
-            return summary
-        else:
-            return f"Error: {result.get('error', 'Search failed')}"
+        # Primary search didn't yield results - try fallback strategies
+        logger.info(
+            f"Primary search yielded no results, trying fallback strategies for: {query}"
+        )
+
+        # Strategy 1: Try direct Cypher queries for common patterns
+        fallback_results = await _try_fallback_queries(query, limit)
+        if fallback_results:
+            return f"Threat Intelligence Search Results (via pattern matching):\n\n{fallback_results}"
+
+        # Strategy 2: Try keyword-based search
+        keyword_results = await _try_keyword_search(query, limit)
+        if keyword_results:
+            return f"Threat Intelligence Search Results (via keyword search):\n\n{keyword_results}"
+
+        # No results found - provide helpful suggestions
+        suggestions = _generate_search_suggestions(query)
+        return f"No threat intelligence found for '{query}'.\n\n" + suggestions
+
     except Exception as e:
-        logger.error(f"Error searching threats: {e}")
-        return f"Error: {str(e)}"
+        logger.error(f"Error in enhanced threat search: {e}")
+        # Try one more fallback - simple existence check
+        try:
+            basic_stats = await _get_basic_database_stats()
+            return f"Error in search: {str(e)}\n\nDatabase Status: {basic_stats}\n\nTry using discover_recent_threats to see what data is available."
+        except:
+            return f"Error: {str(e)}\n\nSuggestion: Try discover_recent_threats to see available data or use more specific search terms."
 
 
 @mcp.tool()
 async def analyze_indicator(
     indicator: str, ctx: Context, indicator_type: str = None
 ) -> str:
-    """Analyze an indicator of compromise (IP, domain, hash, etc.)
+    """Deep analysis of indicators of compromise (IOCs) with enrichment and context
+
+    Provides comprehensive analysis including:
+    - Threat classification and reputation
+    - Associated campaigns, actors, and malware
+    - Geographic and infrastructure details
+    - Timeline and attribution information
+
+    Use this for investigating specific IOCs like IP addresses, domains, file hashes, or URLs.
+    For bulk analysis or discovery, use search_threats instead.
 
     Args:
-        indicator: The indicator to analyze (e.g., IP address, domain, file hash)
-        indicator_type: Optional STIX type (e.g., 'ipv4-addr', 'domain-name', 'file:hashes.MD5')
+        indicator: The IOC to analyze (IP, domain, hash, URL, email, etc.)
+        indicator_type: Optional type hint for better analysis (ipv4-addr, domain-name, file:hashes.MD5, etc.)
     """
     try:
         logger.info(f"Analyzing indicator: {indicator}")
@@ -157,24 +307,20 @@ async def analyze_indicator(
         if result.get("status") == "success":
             data = result.get("data", {})
 
-            summary = f"Indicator Analysis: {indicator}\n"
+            summary = f"Indicator Analysis: {indicator}\n\n"
 
-            if data.get("id"):
-                summary += f"ID: {data.get('id')}\n"
-            if data.get("name"):
-                summary += f"Name: {data.get('name')}\n"
-            if data.get("value"):
-                summary += f"Value: {data.get('value')}\n"
-            if data.get("pattern"):
-                summary += f"Pattern: {data.get('pattern')}\n"
+            # Basic info
             if data.get("indicator_types"):
-                summary += f"Types: {', '.join(data.get('indicator_types', []))}\n"
+                summary += f"Type: {', '.join(data.get('indicator_types', []))}\n"
             if data.get("description"):
-                summary += f"\nDescription: {data.get('description')}\n"
+                summary += f"Description: {data.get('description')}\n"
             if data.get("valid_from"):
-                summary += f"Valid From: {data.get('valid_from')}\n"
-            if data.get("valid_until"):
-                summary += f"Valid Until: {data.get('valid_until')}\n"
+                summary += f"Valid: {data.get('valid_from')[:10]}"
+                if data.get("valid_until"):
+                    summary += f" to {data.get('valid_until')[:10]}\n"
+                else:
+                    summary += " (ongoing)\n"
+            summary += "\n"
 
             # Associated entities
             if data.get("associated_ttps"):
@@ -211,10 +357,20 @@ async def analyze_indicator(
 
 @mcp.tool()
 async def get_threat_actor(actor_name: str, ctx: Context) -> str:
-    """Get detailed information about a specific threat actor
+    """Comprehensive threat actor intelligence and profiling
+
+    Provides detailed actor profiles including:
+    - Operational capabilities and sophistication
+    - Known aliases and attribution details
+    - Geographic attribution and motivation
+    - Associated campaigns, malware, and TTPs
+    - Activity timeline and targeting patterns
+
+    Use this for in-depth threat actor research when you know the specific actor name.
+    For discovery, try search_threats with terms like 'Russian APT' or 'ransomware groups'.
 
     Args:
-        actor_name: Name of the threat actor (e.g., APT28, Lazarus Group)
+        actor_name: Threat actor name, alias, or identifier (APT28, Lazarus, FIN7, etc.)
     """
     try:
         logger.info(f"Getting threat actor: {actor_name}")
@@ -230,28 +386,31 @@ async def get_threat_actor(actor_name: str, ctx: Context) -> str:
         if result.get("status") == "success":
             data = result.get("data", {})
 
-            summary = f"Threat Actor Analysis: {actor_name}\n\n"
+            summary = f"Threat Actor: {data.get('name', actor_name)}\n\n"
 
-            if data.get("id"):
-                summary += f"ID: {data.get('id')}\n"
-            if data.get("name"):
-                summary += f"Name: {data.get('name')}\n"
-            if data.get("labels"):
-                summary += f"Labels: {', '.join(data.get('labels', []))}\n"
+            # Key characteristics
             if data.get("aliases"):
-                summary += f"Aliases: {', '.join(data.get('aliases', []))}\n"
-            if data.get("first_seen"):
-                summary += f"First Seen: {data.get('first_seen')}\n"
-            if data.get("last_seen"):
-                summary += f"Last Seen: {data.get('last_seen')}\n"
+                summary += f"Also known as: {', '.join(data.get('aliases', []))}\n"
             if data.get("description"):
-                summary += f"\nDescription: {data.get('description')}\n"
+                summary += f"Description: {data.get('description')}\n\n"
+
+            # Profile
+            summary += "Profile:\n"
             if data.get("sophistication"):
-                summary += f"Sophistication: {data.get('sophistication')}\n"
+                summary += f"  Sophistication: {data.get('sophistication')}\n"
             if data.get("resource_level"):
-                summary += f"Resource Level: {data.get('resource_level')}\n"
+                summary += f"  Resource Level: {data.get('resource_level')}\n"
             if data.get("primary_motivation"):
-                summary += f"Primary Motivation: {data.get('primary_motivation')}\n"
+                summary += f"  Primary Motivation: {data.get('primary_motivation')}\n"
+
+            # Activity timeline
+            if data.get("first_seen") or data.get("last_seen"):
+                summary += "\nActivity:\n"
+                if data.get("first_seen"):
+                    summary += f"  First Seen: {data.get('first_seen')[:10]}\n"
+                if data.get("last_seen"):
+                    summary += f"  Last Seen: {data.get('last_seen')[:10]}\n"
+            summary += "\n"
 
             # Goals
             if data.get("goals"):
@@ -295,10 +454,20 @@ async def get_threat_actor(actor_name: str, ctx: Context) -> str:
 
 @mcp.tool()
 async def execute_graph_query(cypher_query: str, ctx: Context) -> str:
-    """Execute a Cypher query against the threat intelligence graph database
+    """Execute direct Cypher queries against the threat intelligence graph database
+
+    For advanced users who want to write custom graph database queries.
+    The database contains nodes like ThreatActor, Malware, Campaign, Indicator, Article, etc.
+
+    Common patterns:
+    - Find actors: MATCH (t:ThreatActor) WHERE t.name CONTAINS 'APT' RETURN t
+    - Find connections: MATCH (a:ThreatActor)-[r]-(b) WHERE a.name = 'APT29' RETURN a,r,b
+    - Count data: MATCH (n:Indicator) RETURN count(n)
+
+    For most users, search_threats or discover_recent_threats are easier to use.
 
     Args:
-        cypher_query: Cypher query to execute
+        cypher_query: Valid Cypher query (e.g., "MATCH (n:ThreatActor) RETURN n.name LIMIT 10")
     """
     try:
         logger.info(f"Executing graph query: {cypher_query}")
@@ -312,32 +481,52 @@ async def execute_graph_query(cypher_query: str, ctx: Context) -> str:
 
         if result.get("status") == "success":
             data = result.get("data", {})
-            results = data.get("results", [])
-            query_metadata = data.get("query_metadata", {})
+            results = data.get("results", "")
+            count = data.get("count", 0)
+            truncated = data.get("truncated", False)
 
             if not results:
                 return "Query executed successfully but returned no results."
 
-            # Format results for readability
-            formatted_results = []
-            for i, row in enumerate(results[:10]):  # Limit to first 10 results
-                formatted_results.append(f"Result {i+1}: {json.dumps(row, indent=2)}")
+            # Results are returned as a comma-separated string of JSON objects
+            summary = f"Graph Query Results"
+            if count > 0:
+                summary += f" ({count} results"
+                if truncated:
+                    summary += ", truncated"
+                summary += ")"
+            summary += ":\n\n"
 
-            summary = f"Graph Query Results ({len(results)} total, showing first {min(len(results), 10)}):\n\n"
-            summary += "\n\n".join(formatted_results)
+            # Format the results for better readability
+            if results:
+                # Split on ", {" to separate JSON objects, then clean up
+                if results.startswith("[") and results.endswith("]"):
+                    # If it's a JSON array, parse it
+                    try:
+                        import json as json_mod
 
-            if len(results) > 10:
-                summary += f"\n\n... and {len(results) - 10} more results"
-
-            # Add query metadata if available
-            if query_metadata:
-                summary += f"\n\nQuery Metadata:"
-                if query_metadata.get("execution_time_ms"):
-                    summary += (
-                        f"\n  • Execution Time: {query_metadata['execution_time_ms']}ms"
-                    )
-                if query_metadata.get("nodes_visited"):
-                    summary += f"\n  • Nodes Visited: {query_metadata['nodes_visited']}"
+                        parsed_results = json_mod.loads(results)
+                        for i, item in enumerate(parsed_results[:10], 1):
+                            summary += f"{i}. {json_mod.dumps(item, indent=2)}\n\n"
+                        if len(parsed_results) > 10:
+                            summary += (
+                                f"... and {len(parsed_results) - 10} more results\n"
+                            )
+                    except:
+                        summary += results
+                else:
+                    # Handle comma-separated JSON objects
+                    parts = results.split(", {")
+                    if len(parts) > 1:
+                        # Reconstruct and format each JSON object
+                        for i, part in enumerate(parts[:10], 1):
+                            if i > 1:
+                                part = "{" + part  # Add back the opening brace
+                            summary += f"{i}. {part}\n\n"
+                        if len(parts) > 10:
+                            summary += f"... and {len(parts) - 10} more results\n"
+                    else:
+                        summary += results
 
             return summary
         else:
@@ -349,19 +538,32 @@ async def execute_graph_query(cypher_query: str, ctx: Context) -> str:
 
 @mcp.tool()
 async def threat_intel_chat(question: str, ctx: Context) -> str:
-    """Ask natural language questions about threat intelligence
+    """Get comprehensive threat intelligence analysis using conversational AI
+
+    This tool provides detailed, analytical responses to complex threat intelligence questions.
+    It's designed for in-depth analysis, threat attribution, and strategic intelligence queries.
+
+    Best for:
+    - Analytical questions: "What are the capabilities of APT29?"
+    - Attribution questions: "Which groups use Cobalt Strike?"
+    - Trend analysis: "What are emerging ransomware tactics?"
+    - Strategic questions: "How do Chinese APTs differ from Russian ones?"
+
+    If you need specific data points, try search_threats or discover_recent_threats first.
 
     Args:
-        question: Natural language question about threats, actors, indicators, etc.
+        question: Analytical question about threats, tactics, attribution, trends, etc.
     """
     try:
-        logger.info(f"Processing threat intelligence question: {question}")
+        logger.info(f"Processing analytical threat intelligence question: {question}")
+
+        # Try the intelligent query first
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/intelligent_graph_query",
             json={
                 "query": question,
                 "query_type": "natural_language",
-                "max_results": 10,
+                "max_results": 20,  # Increased for more comprehensive analysis
             },
         )
         response.raise_for_status()
@@ -369,43 +571,320 @@ async def threat_intel_chat(question: str, ctx: Context) -> str:
 
         if result.get("status") == "success":
             data = result.get("data", {})
-            answer = data.get("answer", "No response received")
+            answer = data.get("answer", "")
             cypher_query = data.get("cypher_query")
             graph_results = data.get("graph_results", [])
             confidence = data.get("confidence", 0)
 
-            summary = f"Threat Intelligence Analysis:\n\n{answer}"
+            if answer and graph_results:
+                summary = f"Threat Intelligence Analysis:\n\n{answer}"
 
-            if confidence:
-                summary += f"\n\nConfidence: {confidence:.1%}"
+                if confidence and confidence > 0.1:
+                    summary += f"\n\nConfidence: {confidence:.1%}"
 
-            if cypher_query:
-                summary += f"\n\nGraph Query: {cypher_query}"
+                if graph_results:
+                    summary += "\n\nSupporting Evidence:"
+                    for i, result_item in enumerate(graph_results[:5], 1):
+                        summary += f"\n{i}. {result_item}"
 
-            if graph_results:
-                summary += "\n\nRelevant Data:"
-                for i, result_item in enumerate(
-                    graph_results[:3], 1
-                ):  # Show up to 3 results
-                    summary += f"\n{i}. {result_item}"
+                if cypher_query:
+                    summary += f"\n\nGraph Query Used: {cypher_query}"
 
-            return summary
-        else:
-            return f"Error: {result.get('error', 'Unknown error')}"
+                return summary
+
+        # If intelligent query didn't work well, provide helpful guidance
+        logger.info(
+            f"Intelligent query didn't provide good results, offering guidance for: {question}"
+        )
+
+        # Try to provide context-aware guidance
+        guidance = _generate_analytical_guidance(question)
+
+        # Try to get some basic data to support the guidance
+        basic_data = await _get_contextual_data(question)
+
+        response = f"Analysis Guidance for: '{question}'\n\n{guidance}"
+        if basic_data:
+            response += f"\n\nAvailable Data:\n{basic_data}"
+
+        return response
+
     except Exception as e:
         logger.error(f"Error in threat intel chat: {e}")
-        return f"Error: {str(e)}"
+        guidance = _generate_analytical_guidance(question)
+        return f"Unable to process analytical query due to error: {str(e)}\n\nSuggested approach:\n{guidance}"
 
 
-# Add all missing backend tools
+# Fallback search helper functions
+async def _try_fallback_queries(query: str, limit: int) -> str:
+    """Try direct Cypher queries for common search patterns"""
+    query_lower = query.lower()
+    fallback_queries = []
+
+    # Pattern 1: Looking for threat actors
+    if any(term in query_lower for term in ["actor", "apt", "group", "threat"]):
+        fallback_queries.append(
+            "MATCH (t:ThreatActor) RETURN t.name as name, t.aliases as aliases, t.country as country LIMIT "
+            + str(limit)
+        )
+
+    # Pattern 2: Looking for malware
+    if any(
+        term in query_lower for term in ["malware", "ransomware", "trojan", "virus"]
+    ):
+        fallback_queries.append(
+            "MATCH (m:Malware) RETURN m.name as name, m.family as family, m.type as type LIMIT "
+            + str(limit)
+        )
+
+    # Pattern 3: Looking for campaigns
+    if any(term in query_lower for term in ["campaign", "operation"]):
+        fallback_queries.append(
+            "MATCH (c:Campaign) RETURN c.name as name, c.description as description LIMIT "
+            + str(limit)
+        )
+
+    # Pattern 4: Looking for indicators
+    if any(
+        term in query_lower for term in ["indicator", "ioc", "ip", "domain", "hash"]
+    ):
+        fallback_queries.append(
+            "MATCH (i:Indicator) RETURN i.value as value, i.type as type, i.confidence as confidence LIMIT "
+            + str(limit)
+        )
+
+    # Pattern 5: Country-based search
+    for country in ["russia", "china", "north korea", "iran", "usa", "israel"]:
+        if country in query_lower:
+            fallback_queries.append(
+                f"MATCH (actor:ThreatActor)-[:LOCATED_IN]->(country:Country) WHERE toLower(country.name) CONTAINS '{country}' RETURN actor.name as name, country.name as country LIMIT {limit}"
+            )
+            break
+
+    # Try each fallback query
+    for cypher_query in fallback_queries:
+        try:
+            response = await umbrix_client.client.post(
+                f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+                json={"cypher_query": cypher_query},
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("status") == "success" and result.get("data", {}).get(
+                    "results"
+                ):
+                    return f"Found results using pattern matching:\n{result['data']['results']}"
+        except Exception as e:
+            logger.debug(f"Fallback query failed: {e}")
+            continue
+
+    return None
+
+
+async def _try_keyword_search(query: str, limit: int) -> str:
+    """Try keyword-based search across node properties"""
+    keywords = query.lower().replace(",", " ").split()
+
+    # Build a comprehensive keyword search query
+    keyword_query = f"""
+    MATCH (n)
+    WHERE any(keyword IN {keywords} WHERE 
+        toLower(n.name) CONTAINS keyword OR 
+        toLower(n.title) CONTAINS keyword OR 
+        toLower(n.description) CONTAINS keyword OR
+        toLower(n.aliases) CONTAINS keyword
+    )
+    RETURN labels(n) as type, n.name as name, coalesce(n.description, n.title, '') as description
+    LIMIT {limit}
+    """
+
+    try:
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+            json={"cypher_query": keyword_query},
+        )
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("status") == "success" and result.get("data", {}).get(
+                "results"
+            ):
+                return (
+                    f"Found results using keyword search:\n{result['data']['results']}"
+                )
+    except Exception as e:
+        logger.debug(f"Keyword search failed: {e}")
+
+    return None
+
+
+async def _get_basic_database_stats() -> str:
+    """Get basic database statistics"""
+    try:
+        stats_query = """
+        MATCH (n) 
+        RETURN labels(n)[0] as node_type, count(n) as count 
+        ORDER BY count DESC
+        """
+
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+            json={"cypher_query": stats_query},
+        )
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("status") == "success":
+                return f"Database contains: {result.get('data', {}).get('results', 'unknown data')}"
+    except:
+        pass
+    return "Database status unknown"
+
+
+def _generate_analytical_guidance(question: str) -> str:
+    """Generate analytical guidance for threat intelligence questions"""
+    question_lower = question.lower()
+
+    guidance = ["💡 Analytical Approach:"]
+
+    # Context-specific guidance
+    if any(term in question_lower for term in ["actor", "group", "apt"]):
+        guidance.extend(
+            [
+                "• Use get_threat_actor for detailed actor profiles",
+                "• Try search_threats with specific actor names",
+                "• Use threat_correlation for actor relationships",
+            ]
+        )
+    elif any(term in question_lower for term in ["malware", "trojan", "ransomware"]):
+        guidance.extend(
+            [
+                "• Use get_malware_details for family analysis",
+                "• Try search_threats with malware names",
+                "• Use threat_correlation for malware relationships",
+            ]
+        )
+    elif any(term in question_lower for term in ["campaign", "operation"]):
+        guidance.extend(
+            [
+                "• Use get_campaign_details for operation analysis",
+                "• Try search_threats with campaign names",
+                "• Use timeline_analysis for campaign progression",
+            ]
+        )
+    elif any(
+        term in question_lower for term in ["indicator", "ioc", "ip", "domain", "hash"]
+    ):
+        guidance.extend(
+            [
+                "• Use analyze_indicator for IOC details",
+                "• Try indicator_reputation for threat scoring",
+                "• Use threat_actor_attribution for attribution",
+            ]
+        )
+    else:
+        guidance.extend(
+            [
+                "• Use discover_recent_threats to see available data",
+                "• Try search_threats with key terms from your question",
+                "• Use execute_graph_query for custom analysis",
+            ]
+        )
+
+    guidance.append(
+        "\nFor immediate data exploration, try discover_recent_threats first."
+    )
+    return "\n".join(guidance)
+
+
+async def _get_contextual_data(question: str) -> str:
+    """Get contextual data to support analytical guidance"""
+    try:
+        # Get basic database stats to show what data is available
+        stats_query = """
+        CALL {
+            MATCH (n:ThreatActor) RETURN 'Threat Actors' as type, count(n) as count
+            UNION
+            MATCH (n:Malware) RETURN 'Malware' as type, count(n) as count
+            UNION
+            MATCH (n:Campaign) RETURN 'Campaigns' as type, count(n) as count
+            UNION
+            MATCH (n:Indicator) RETURN 'Indicators' as type, count(n) as count
+            UNION
+            MATCH (n:Article) RETURN 'Articles' as type, count(n) as count
+        }
+        RETURN type, count
+        ORDER BY count DESC
+        """
+
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+            json={"cypher_query": stats_query},
+        )
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("status") == "success":
+                return f"Database contains: {result.get('data', {}).get('results', 'unknown data')}"
+    except:
+        pass
+    return "Database status unknown"
+
+
+def _generate_search_suggestions(query: str) -> str:
+    """Generate helpful search suggestions when no results found"""
+    suggestions = []
+    query_lower = query.lower()
+
+    # Suggest related terms
+    if "apt" in query_lower:
+        suggestions.append(
+            "• Try searching for specific APT numbers: 'APT1', 'APT29', 'APT28'"
+        )
+        suggestions.append(
+            "• Try broader terms: 'advanced persistent threat' or 'state-sponsored'"
+        )
+
+    if any(
+        malware_term in query_lower
+        for malware_term in ["malware", "ransomware", "trojan"]
+    ):
+        suggestions.append(
+            "• Try specific malware names: 'WannaCry', 'Emotet', 'Cobalt Strike'"
+        )
+        suggestions.append("• Try malware families: 'banking trojan', 'cryptominer'")
+
+    if any(geo_term in query_lower for geo_term in ["russian", "chinese", "iranian"]):
+        suggestions.append(
+            "• Try country names: 'Russia', 'China', 'Iran', 'North Korea'"
+        )
+        suggestions.append("• Try 'threat actors from [country]'")
+
+    # Always suggest recent data exploration
+    suggestions.extend(
+        [
+            "• Use discover_recent_threats to see latest threat activity",
+            "• Try execute_graph_query with: 'MATCH (n) RETURN labels(n), count(n)' to see available data types",
+            "• Search for broader terms like 'threat actor', 'malware', 'campaign', or 'indicators'",
+        ]
+    )
+
+    return "Try these alternatives:\n" + "\n".join(suggestions)
 
 
 @mcp.tool()
 async def get_malware_details(malware_name: str, ctx: Context) -> str:
-    """Get detailed information about a specific malware
+    """Comprehensive malware analysis and family intelligence
+
+    Provides detailed malware intelligence including:
+    - Malware family classification and variants
+    - Capabilities and attack vectors
+    - Associated threat actors and campaigns
+    - Infrastructure and distribution methods
+    - Timeline of variants and evolution
+
+    Use this when you know the specific malware name or family.
+    For discovery, try search_threats with terms like 'ransomware' or 'banking trojan'.
 
     Args:
-        malware_name: Name of the malware (e.g., WannaCry, Emotet)
+        malware_name: Malware name or family (WannaCry, Emotet, TrickBot, etc.)
     """
     try:
         logger.info(f"Getting malware details: {malware_name}")
@@ -480,10 +959,21 @@ async def get_malware_details(malware_name: str, ctx: Context) -> str:
 
 @mcp.tool()
 async def get_campaign_details(campaign_name: str, ctx: Context) -> str:
-    """Get detailed information about a specific threat campaign
+    """Detailed threat campaign analysis and operation intelligence
+
+    Provides comprehensive campaign intelligence including:
+    - Campaign objectives and targeting strategy
+    - Attribution to threat actors and sponsors
+    - Timeline of activities and phases
+    - Malware and tools used
+    - Victims and geographic scope
+    - Indicators and infrastructure
+
+    Use this when you know the specific campaign or operation name.
+    For discovery, try search_threats with terms like 'operation' or 'campaign'.
 
     Args:
-        campaign_name: Name of the campaign (e.g., Operation Aurora, SolarWinds)
+        campaign_name: Campaign name or operation (SolarWinds, Operation Aurora, etc.)
     """
     try:
         logger.info(f"Getting campaign details: {campaign_name}")
@@ -805,6 +1295,121 @@ async def indicator_reputation(indicator: str, ctx: Context) -> str:
 
 
 @mcp.tool()
+async def find_threat_actors(ctx: Context, days_back: int = 90, limit: int = 15) -> str:
+    """Find threat actors with recent activity and attribution information
+
+    This tool finds threat actors that have been active recently or have strong attribution.
+    Perfect for "who are the current threat actors?" or "what groups are active?"
+
+    Args:
+        days_back: Number of days to look back for activity (default: 90)
+        limit: Maximum number of actors to return (default: 15)
+    """
+    try:
+        logger.info(f"Finding threat actors from the last {days_back} days")
+
+        # Use direct Cypher query to find threat actors with recent activity
+        threat_actors_query = f"""
+        MATCH (ta:ThreatActor)
+        OPTIONAL MATCH (ta)-[:ATTRIBUTED_TO|USES|TARGETS]-(related)
+        WHERE related.last_seen IS NOT NULL 
+        AND datetime(related.last_seen) >= datetime() - duration({{days: {days_back}}})
+        WITH ta, count(related) as recent_activity
+        WHERE recent_activity > 0 OR ta.aliases IS NOT NULL
+        RETURN ta.name, ta.aliases, ta.country, ta.description, recent_activity
+        ORDER BY recent_activity DESC, ta.name ASC
+        LIMIT {limit}
+        """
+
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+            json={"cypher_query": threat_actors_query},
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("status") == "success":
+            data = result.get("data", {})
+            results = data.get("results", "")
+            count = data.get("count", 0)
+
+            if count > 0:
+                summary = f"🎭 Active Threat Actors (Last {days_back} Days)\n"
+                summary += f"Found {count} threat actors with recent activity:\n\n"
+
+                # Parse the results
+                import json as json_mod
+
+                try:
+                    if results.startswith("[") and results.endswith("]"):
+                        actors = json_mod.loads(results)
+                        for i, actor in enumerate(actors, 1):
+                            name = actor.get("ta.name", "Unknown")
+                            aliases = actor.get("ta.aliases", "")
+                            country = actor.get("ta.country", "")
+                            description = actor.get("ta.description", "")
+                            activity = actor.get("recent_activity", 0)
+
+                            summary += f"{i}. {name}\n"
+                            if aliases and aliases.strip():
+                                summary += f"   🏷️  Aliases: {aliases}\n"
+                            if country and country.strip():
+                                summary += f"   🌍 Country: {country}\n"
+                            if activity > 0:
+                                summary += (
+                                    f"   📊 Recent Activity: {activity} connections\n"
+                                )
+                            if (
+                                description
+                                and description.strip()
+                                and len(description) < 100
+                            ):
+                                summary += f"   📝 {description[:97]}...\n"
+                            summary += "\n"
+                    else:
+                        summary += results
+
+                except Exception:
+                    summary += results
+
+                summary += "\n💡 For detailed profiles, use get_threat_actor tool with specific actor names."
+                return summary
+            else:
+                # Try fallback query without date restrictions
+                fallback_query = f"""
+                MATCH (ta:ThreatActor)
+                RETURN ta.name, ta.aliases, ta.country, ta.description
+                ORDER BY ta.name ASC
+                LIMIT {limit}
+                """
+
+                response = await umbrix_client.client.post(
+                    f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+                    json={"cypher_query": fallback_query},
+                )
+                response.raise_for_status()
+                fallback_result = response.json()
+
+                if fallback_result.get("status") == "success":
+                    fallback_data = fallback_result.get("data", {})
+                    fallback_results = fallback_data.get("results", "")
+                    fallback_count = fallback_data.get("count", 0)
+
+                    if fallback_count > 0:
+                        return f"🎭 Known Threat Actors (no recent activity in {days_back} days)\n\nFound {fallback_count} known threat actors:\n\n{fallback_results}\n\n💡 Use get_threat_actor tool for detailed profiles."
+
+                return "No threat actors found in the database."
+        else:
+            return (
+                f"Error finding threat actors: {result.get('error', 'Unknown error')}"
+            )
+
+    except Exception as e:
+        logger.error(f"Error finding threat actors: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
 async def threat_actor_attribution(indicators: list[str], ctx: Context) -> str:
     """Attribute indicators to potential threat actors
 
@@ -986,66 +1591,222 @@ async def network_analysis(network: str, ctx: Context) -> str:
 
 
 @mcp.tool()
-async def timeline_analysis(
-    start_date: str, end_date: str, entity_filter: str, ctx: Context
+async def find_recent_indicators(
+    ctx: Context,
+    days_back: int = 30,
+    indicator_types: list[str] = None,
+    limit: int = 20,
 ) -> str:
-    """Analyze threat activity over a time period
+    """Find recent indicators of compromise (IOCs) by type and timeframe
+
+    This tool finds IOCs that have been recently discovered or updated.
+    Perfect for "what are the latest IOCs?" or "show me recent malware hashes"
 
     Args:
-        start_date: Start date (YYYY-MM-DD)
-        end_date: End date (YYYY-MM-DD)
-        entity_filter: Filter by entity type (all, actors, malware, campaigns, indicators)
+        days_back: Number of days to look back (default: 30)
+        indicator_types: Types to filter by (e.g., ['ipv4-addr', 'domain-name', 'file:hashes.MD5']) (optional)
+        limit: Maximum number of indicators to return (default: 20)
     """
     try:
-        logger.info(f"Analyzing timeline from {start_date} to {end_date}")
+        logger.info(f"Finding recent indicators from the last {days_back} days")
+
+        # Build type filter if specified
+        type_filter = ""
+        if indicator_types and len(indicator_types) > 0:
+            type_list = "', '".join(indicator_types)
+            type_filter = f"AND i.type IN ['{type_list}']"
+
+        # Use direct Cypher query to find recent indicators
+        indicators_query = f"""
+        MATCH (i:Indicator)
+        WHERE i.first_seen IS NOT NULL 
+        AND datetime(i.first_seen) >= datetime() - duration({{days: {days_back}}})
+        {type_filter}
+        RETURN i.value, i.type, i.confidence, i.first_seen, i.threat_level
+        ORDER BY datetime(i.first_seen) DESC
+        LIMIT {limit}
+        """
+
         response = await umbrix_client.client.post(
-            f"{umbrix_client.base_url}/v1/tools/timeline_analysis",
-            json={
-                "start_date": start_date,
-                "end_date": end_date,
-                "entity_filter": entity_filter,
-            },
+            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+            json={"cypher_query": indicators_query},
         )
         response.raise_for_status()
         result = response.json()
 
         if result.get("status") == "success":
             data = result.get("data", {})
-            events = data.get("events", [])
+            results = data.get("results", "")
+            count = data.get("count", 0)
 
-            summary = f"Timeline Analysis: {start_date} to {end_date}\n"
-            summary += f"Filter: {entity_filter}\n\n"
+            if count > 0:
+                type_str = f" ({', '.join(indicator_types)})" if indicator_types else ""
+                summary = f"🔍 Recent Indicators{type_str} (Last {days_back} Days)\n"
+                summary += f"Found {count} recent IOCs:\n\n"
 
-            if data.get("total_events"):
-                summary += f"Total Events: {data['total_events']}\n"
+                # Parse the results
+                import json as json_mod
 
-            # Summary statistics
-            if data.get("summary"):
-                stats = data["summary"]
-                summary += "\nSummary:\n"
-                if stats.get("most_active_actors"):
-                    summary += f"  Most Active Actors: {', '.join(stats['most_active_actors'][:3])}\n"
-                if stats.get("new_malware"):
-                    summary += f"  New Malware: {stats['new_malware']}\n"
-                if stats.get("major_campaigns"):
-                    summary += f"  Major Campaigns: {stats['major_campaigns']}\n"
-                if stats.get("peak_activity_date"):
-                    summary += f"  Peak Activity: {stats['peak_activity_date']}\n"
+                try:
+                    if results.startswith("[") and results.endswith("]"):
+                        indicators = json_mod.loads(results)
+                        for i, indicator in enumerate(indicators, 1):
+                            value = indicator.get("i.value", "Unknown")
+                            ioc_type = indicator.get("i.type", "Unknown")
+                            confidence = indicator.get("i.confidence", "")
+                            first_seen = indicator.get("i.first_seen", "")
+                            threat_level = indicator.get("i.threat_level", "")
 
-            # Timeline events
-            if events:
-                summary += (
-                    f"\nKey Events (showing {min(len(events), 10)} of {len(events)}):\n"
+                            summary += f"{i}. {value}\n"
+                            summary += f"   📝 Type: {ioc_type}\n"
+                            if confidence:
+                                summary += f"   📊 Confidence: {confidence}\n"
+                            if threat_level:
+                                summary += f"   ⚠️  Threat Level: {threat_level}\n"
+                            if first_seen:
+                                summary += f"   📅 First Seen: {first_seen[:10]}\n"
+                            summary += "\n"
+                    else:
+                        summary += results
+
+                except Exception:
+                    summary += results
+
+                summary += "\n💡 For detailed analysis, use analyze_indicator tool with specific IOCs."
+                return summary
+            else:
+                # Try fallback query without date restrictions
+                fallback_query = f"""
+                MATCH (i:Indicator)
+                WHERE 1=1 {type_filter}
+                RETURN i.value, i.type, i.confidence, coalesce(i.first_seen, 'unknown') as first_seen
+                ORDER BY i.value ASC
+                LIMIT {limit}
+                """
+
+                response = await umbrix_client.client.post(
+                    f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+                    json={"cypher_query": fallback_query},
                 )
-                for event in events[:10]:
+                response.raise_for_status()
+                fallback_result = response.json()
+
+                if fallback_result.get("status") == "success":
+                    fallback_data = fallback_result.get("data", {})
+                    fallback_results = fallback_data.get("results", "")
+                    fallback_count = fallback_data.get("count", 0)
+
+                    if fallback_count > 0:
+                        type_str = (
+                            f" of type {', '.join(indicator_types)}"
+                            if indicator_types
+                            else ""
+                        )
+                        return f"🔍 Known Indicators{type_str} (no recent activity in {days_back} days)\n\nFound {fallback_count} indicators:\n\n{fallback_results}\n\n💡 Use analyze_indicator for detailed analysis."
+
+                return f"No indicators found{' of the specified types' if indicator_types else ''} in the database."
+        else:
+            return f"Error finding indicators: {result.get('error', 'Unknown error')}"
+
+    except Exception as e:
+        logger.error(f"Error finding recent indicators: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def timeline_analysis(
+    entities: list[str],
+    ctx: Context,
+    time_range: dict = None,
+    analysis_types: list[str] = None,
+    max_events: int = 100,
+) -> str:
+    """Analyze threat activity over a time period
+
+    Args:
+        entities: List of entities to analyze (indicators, campaigns, threat actors, etc.)
+        time_range: Time range with start_date and end_date in ISO 8601 format (optional, defaults to last 30 days)
+        analysis_types: Types of analysis to perform (optional, defaults to ["indicator_timeline", "campaign_progression"])
+        max_events: Maximum number of events to analyze (default: 100)
+    """
+    try:
+        logger.info(f"Analyzing timeline for entities: {entities}")
+
+        # Prepare request payload
+        payload = {"entities": entities, "max_events": max_events}
+
+        if time_range:
+            payload["time_range"] = time_range
+
+        if analysis_types:
+            payload["analysis_types"] = analysis_types
+        else:
+            payload["analysis_types"] = ["indicator_timeline", "campaign_progression"]
+
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/timeline_analysis",
+            json=payload,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("status") == "success":
+            data = result.get("data", {})
+            timeline = data.get("timeline", [])
+            patterns = data.get("patterns", [])
+            correlations = data.get("correlations", [])
+            statistics = data.get("statistics", {})
+            insights = data.get("insights", [])
+
+            # Format time range for display
+            time_display = "Last 30 days"
+            if time_range:
+                start = time_range.get("start_date", "")[:10]  # Extract date part
+                end = time_range.get("end_date", "")[:10]
+                time_display = f"{start} to {end}"
+
+            summary = f"Timeline Analysis: {', '.join(entities[:3])}{'...' if len(entities) > 3 else ''}\n"
+            summary += f"Time Range: {time_display}\n\n"
+
+            # Statistics
+            if statistics:
+                summary += "Statistics:\n"
+                if statistics.get("total_events"):
+                    summary += f"  Total Events: {statistics['total_events']}\n"
+                if statistics.get("time_span"):
+                    summary += f"  Time Span: {statistics['time_span']}\n"
+                if statistics.get("most_active_period"):
                     summary += (
-                        f"\n{event.get('date', '')} - {event.get('event_type', '')}:\n"
+                        f"  Most Active Period: {statistics['most_active_period']}\n"
                     )
-                    summary += f"  {event.get('description', '')}\n"
-                    if event.get("entities"):
-                        summary += f"  Entities: {', '.join(event['entities'][:3])}\n"
+                summary += "\n"
+
+            # Key timeline events
+            if timeline:
+                summary += f"Timeline Events (showing {min(len(timeline), 10)} of {len(timeline)}):\n"
+                for event in timeline[:10]:
+                    summary += f"• {event.get('timestamp', '')[:10]} - {event.get('description', '')}\n"
                     if event.get("severity"):
-                        summary += f"  Severity: {event['severity']}\n"
+                        summary += f"  Severity: {event.get('severity')}\n"
+                summary += "\n"
+
+            # Patterns
+            if patterns:
+                summary += f"Temporal Patterns ({len(patterns)}):\n"
+                for pattern in patterns[:3]:
+                    summary += f"• {pattern.get('pattern_type', '')}: {pattern.get('description', '')}\n"
+                if len(patterns) > 3:
+                    summary += f"  ... and {len(patterns) - 3} more patterns\n"
+                summary += "\n"
+
+            # Key insights
+            if insights:
+                summary += f"Key Insights ({len(insights)}):\n"
+                for insight in insights[:3]:
+                    summary += f"• {insight.get('title', '')}\n"
+                    summary += f"  {insight.get('description', '')}\n"
+                if len(insights) > 3:
+                    summary += f"  ... and {len(insights) - 3} more insights\n"
 
             return summary
         else:
@@ -1180,9 +1941,22 @@ async def report_generation(
 
 @mcp.tool()
 async def system_health_check(ctx: Context) -> str:
-    """Check system health and component status
+    """Check system health and verify threat intelligence platform status
 
-    Returns health status of various system components including databases, services, and agents
+    Provides comprehensive system status including:
+    - Database connectivity and performance
+    - Data collection agent status
+    - API service health and response times
+    - Data freshness and ingestion rates
+    - Storage and memory utilization
+
+    Use this tool when:
+    - Other tools are returning errors or no data
+    - You want to verify the platform is operational
+    - Checking data availability before analysis
+    - Troubleshooting connectivity issues
+
+    No parameters required - returns full system status report.
     """
     try:
         logger.info("Checking system health")
@@ -1260,8 +2034,147 @@ async def system_health_check(ctx: Context) -> str:
         return f"Error: {str(e)}"
 
 
+@mcp.tool()
+async def find_vulnerabilities(
+    ctx: Context,
+    severity_levels: list[str] = None,
+    days_back: int = 90,
+    limit: int = 15,
+) -> str:
+    """Find known vulnerabilities and CVEs in the threat intelligence database
+
+    This tool finds vulnerabilities that threat actors are exploiting or targeting.
+    Perfect for "what vulnerabilities are being exploited?" or "show me recent CVEs"
+
+    Args:
+        severity_levels: Filter by severity (e.g., ['critical', 'high']) (optional)
+        days_back: Number of days to look back for recent activity (default: 90)
+        limit: Maximum number of vulnerabilities to return (default: 15)
+    """
+    try:
+        logger.info(f"Finding vulnerabilities from the last {days_back} days")
+
+        # Build severity filter if specified
+        severity_filter = ""
+        if severity_levels and len(severity_levels) > 0:
+            severity_list = "', '".join([s.lower() for s in severity_levels])
+            severity_filter = f"AND toLower(v.severity) IN ['{severity_list}']"
+
+        # Use direct Cypher query to find vulnerabilities
+        vulnerabilities_query = f"""
+        MATCH (v:Vulnerability)
+        OPTIONAL MATCH (v)-[:EXPLOITS|TARGETS]-(related)
+        WHERE (related.last_seen IS NOT NULL 
+               AND datetime(related.last_seen) >= datetime() - duration({{days: {days_back}}})
+              ) OR v.published_date IS NOT NULL
+        {severity_filter}
+        WITH v, count(related) as recent_activity
+        RETURN v.cve_id, v.name, v.severity, v.cvss_score, v.description, recent_activity
+        ORDER BY recent_activity DESC, v.cvss_score DESC, v.cve_id DESC
+        LIMIT {limit}
+        """
+
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+            json={"cypher_query": vulnerabilities_query},
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("status") == "success":
+            data = result.get("data", {})
+            results = data.get("results", "")
+            count = data.get("count", 0)
+
+            if count > 0:
+                severity_str = (
+                    f" ({', '.join(severity_levels)})" if severity_levels else ""
+                )
+                summary = f"🚨 Vulnerabilities{severity_str} (Last {days_back} Days)\n"
+                summary += (
+                    f"Found {count} vulnerabilities with activity or high impact:\n\n"
+                )
+
+                # Parse the results
+                import json as json_mod
+
+                try:
+                    if results.startswith("[") and results.endswith("]"):
+                        vulns = json_mod.loads(results)
+                        for i, vuln in enumerate(vulns, 1):
+                            cve_id = vuln.get("v.cve_id", "Unknown")
+                            name = vuln.get("v.name", "")
+                            severity = vuln.get("v.severity", "")
+                            cvss_score = vuln.get("v.cvss_score", "")
+                            description = vuln.get("v.description", "")
+                            activity = vuln.get("recent_activity", 0)
+
+                            summary += f"{i}. {cve_id}\n"
+                            if name and name.strip():
+                                summary += f"   📝 Name: {name}\n"
+                            if severity:
+                                summary += f"   ⚠️  Severity: {severity.upper()}\n"
+                            if cvss_score:
+                                summary += f"   📊 CVSS Score: {cvss_score}\n"
+                            if activity > 0:
+                                summary += f"   🎯 Recent Exploitation: {activity} references\n"
+                            if description and len(description) < 150:
+                                summary += f"   📄 {description[:147]}...\n"
+                            summary += "\n"
+                    else:
+                        summary += results
+
+                except Exception:
+                    summary += results
+
+                summary += "\n💡 For detailed vulnerability analysis, use search_threats with specific CVE IDs."
+                return summary
+            else:
+                # Try fallback query without activity filter
+                fallback_query = f"""
+                MATCH (v:Vulnerability)
+                WHERE 1=1 {severity_filter}
+                RETURN v.cve_id, v.name, v.severity, v.cvss_score
+                ORDER BY v.cvss_score DESC, v.cve_id DESC
+                LIMIT {limit}
+                """
+
+                response = await umbrix_client.client.post(
+                    f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
+                    json={"cypher_query": fallback_query},
+                )
+                response.raise_for_status()
+                fallback_result = response.json()
+
+                if fallback_result.get("status") == "success":
+                    fallback_data = fallback_result.get("data", {})
+                    fallback_results = fallback_data.get("results", "")
+                    fallback_count = fallback_data.get("count", 0)
+
+                    if fallback_count > 0:
+                        severity_str = (
+                            f" with {', '.join(severity_levels)} severity"
+                            if severity_levels
+                            else ""
+                        )
+                        return f"🚨 Known Vulnerabilities{severity_str} (no recent exploitation in {days_back} days)\n\nFound {fallback_count} vulnerabilities:\n\n{fallback_results}\n\n💡 Use search_threats with CVE IDs for more details."
+
+                return f"No vulnerabilities found{' with specified severity levels' if severity_levels else ''} in the database."
+        else:
+            return (
+                f"Error finding vulnerabilities: {result.get('error', 'Unknown error')}"
+            )
+
+    except Exception as e:
+        logger.error(f"Error finding vulnerabilities: {e}")
+        return f"Error: {str(e)}"
+
+
 def main():
-    """Run the MCP server"""
+    """Run the enhanced Umbrix MCP server with improved LLM-friendly tools"""
+    logger.info(
+        "Starting enhanced Umbrix MCP server with optimized threat intelligence tools"
+    )
     mcp.run()
 
 

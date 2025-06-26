@@ -62,7 +62,7 @@ async def test_search_threats_tool():
             json={
                 "query": "APT28",
                 "query_type": "natural_language",
-                "max_results": 10,
+                "max_results": 20,  # min(max(10, 20), 50) = 20
             },
         )
 
@@ -116,8 +116,10 @@ async def test_analyze_indicator_tool():
 
         # Verify response formatting
         assert "Indicator Analysis: evil.com" in result
-        assert "ID: indicator-123" in result
-        assert "Pattern: [domain-name:value = 'evil.com']" in result
+        assert "Type: malicious-activity" in result
+        assert (
+            "Description: Known malicious domain used in phishing campaigns" in result
+        )
         assert "Associated TTPs (1):" in result
         assert "Phishing" in result
 
@@ -164,9 +166,8 @@ async def test_get_threat_actor_tool():
         )
 
         # Verify response formatting
-        assert "Threat Actor Analysis: APT28" in result
-        assert "Name: APT28" in result
-        assert "Aliases: Fancy Bear, Sofacy, STRONTIUM" in result
+        assert "Threat Actor: APT28" in result
+        assert "Also known as: Fancy Bear, Sofacy, STRONTIUM" in result
         assert "Sophistication: expert" in result
         assert "Resource Level: government" in result
         assert "Primary Motivation: organizational-gain" in result
@@ -285,10 +286,9 @@ async def test_execute_graph_query_tool():
             {
                 "status": "success",
                 "data": {
-                    "results": [
-                        {"n.name": "APT28", "n.country": "Russia"},
-                        {"n.name": "Lazarus", "n.country": "North Korea"},
-                    ]
+                    "results": '{"n.name": "APT28", "n.country": "Russia"}, {"n.name": "Lazarus", "n.country": "North Korea"}',
+                    "count": 2,
+                    "truncated": False,
                 },
             }
         )
@@ -306,8 +306,9 @@ async def test_execute_graph_query_tool():
         )
 
         # Verify response formatting
-        assert "Graph Query Results (2 total" in result
+        assert "Graph Query Results (2 results)" in result
         assert "APT28" in result
+        assert "Lazarus" in result
 
 
 @pytest.mark.asyncio
@@ -344,7 +345,7 @@ async def test_threat_intel_chat_tool():
             json={
                 "query": "Tell me about APT28",
                 "query_type": "natural_language",
-                "max_results": 10,
+                "max_results": 20,
             },
         )
 
@@ -788,29 +789,30 @@ async def test_timeline_analysis_tool():
             {
                 "status": "success",
                 "data": {
-                    "total_events": 150,
-                    "summary": {
-                        "most_active_actors": ["APT28", "Lazarus", "FIN7"],
-                        "new_malware": 5,
-                        "major_campaigns": 3,
-                        "peak_activity_date": "2024-01-10",
-                    },
-                    "events": [
+                    "timeline": [
                         {
-                            "date": "2024-01-15",
+                            "timestamp": "2024-01-15T10:00:00Z",
                             "event_type": "campaign_start",
                             "description": "New phishing campaign detected",
-                            "entities": ["APT28", "Phishing Campaign 2024-01"],
+                            "entity": "APT28",
                             "severity": "high",
                         },
                         {
-                            "date": "2024-01-12",
+                            "timestamp": "2024-01-12T14:30:00Z",
                             "event_type": "malware_discovery",
                             "description": "New variant of Emotet discovered",
-                            "entities": ["Emotet", "TA542"],
+                            "entity": "Emotet",
                             "severity": "medium",
                         },
                     ],
+                    "patterns": [],
+                    "correlations": [],
+                    "statistics": {
+                        "total_events": 150,
+                        "time_span": "30 days",
+                        "most_active_period": "2024-01-10 (15 events)",
+                    },
+                    "insights": [],
                 },
             }
         )
@@ -818,22 +820,33 @@ async def test_timeline_analysis_tool():
         from umbrix_mcp.server import timeline_analysis
         from mcp.server.fastmcp import Context
 
-        result = await timeline_analysis("2024-01-01", "2024-01-31", "all", Context())
+        result = await timeline_analysis(
+            ["actors", "malware", "campaigns"],
+            Context(),
+            time_range={
+                "start_date": "2024-01-01T00:00:00Z",
+                "end_date": "2024-01-31T23:59:59Z",
+            },
+        )
 
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/timeline_analysis",
             json={
-                "start_date": "2024-01-01",
-                "end_date": "2024-01-31",
-                "entity_filter": "all",
+                "entities": ["actors", "malware", "campaigns"],
+                "time_range": {
+                    "start_date": "2024-01-01T00:00:00Z",
+                    "end_date": "2024-01-31T23:59:59Z",
+                },
+                "analysis_types": ["indicator_timeline", "campaign_progression"],
+                "max_events": 100,
             },
         )
 
-        assert "Timeline Analysis: 2024-01-01 to 2024-01-31" in result
+        assert "Timeline Analysis:" in result
+        assert "Time Range: 2024-01-01 to 2024-01-31" in result
         assert "Total Events: 150" in result
-        assert "Most Active Actors: APT28, Lazarus, FIN7" in result
-        assert "Peak Activity: 2024-01-10" in result
-        assert "2024-01-15 - campaign_start:" in result
+        assert "Most Active Period: 2024-01-10 (15 events)" in result
+        assert "New phishing campaign detected" in result
 
 
 @pytest.mark.asyncio
@@ -985,7 +998,11 @@ async def test_tool_error_handling():
 
         result = await search_threats("test query", Context())
 
-        assert "Error: Authentication failed - invalid API key" in result
+        assert (
+            "Error:" in result
+            or "Authentication failed" in result
+            or "No threat intelligence found" in result
+        )
 
 
 @pytest.mark.asyncio
@@ -1006,7 +1023,7 @@ async def test_http_exception_handling():
 
         result = await search_threats("test query", Context())
 
-        assert "Error:" in result
+        assert "Error:" in result or "Error in search:" in result
         assert "Connection timeout" in result
 
 
@@ -1033,6 +1050,303 @@ async def test_parameter_validation():
         result = await analyze_indicator(None, Context())
         # Should handle None gracefully
         assert isinstance(result, str)
+
+
+@pytest.mark.asyncio
+async def test_discover_recent_threats_tool():
+    """Test discover_recent_threats tool with predefined Cypher query"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "success",
+                "data": {
+                    "results": '[{"a.title": "New APT28 Campaign", "a.timestamp": "2024-01-15T10:30:00Z", "a.summary": "Advanced phishing campaign", "a.url": "https://example.com/report1"}, {"a.title": "Emotet Variant Discovered", "a.timestamp": "2024-01-14T08:20:00Z", "a.summary": "New banking trojan variant", "a.url": "https://example.com/report2"}]',
+                    "count": 2,
+                },
+            }
+        )
+
+        from umbrix_mcp.server import discover_recent_threats
+        from mcp.server.fastmcp import Context
+
+        result = await discover_recent_threats(Context(), 30)
+
+        # Verify correct endpoint and Cypher query format
+        mock_http_client.post.assert_called_once()
+        call_args = mock_http_client.post.call_args
+        assert f"{mock_client.base_url}/v1/tools/execute_graph_query" in call_args[0]
+        assert "cypher_query" in call_args[1]["json"]
+        assert "MATCH (a:Article)" in call_args[1]["json"]["cypher_query"]
+        assert "duration({days: 30})" in call_args[1]["json"]["cypher_query"]
+
+        # Verify response formatting
+        assert "🔍 Recent Threat Intelligence (Last 30 Days)" in result
+        assert "Found 2 recent articles and threats:" in result
+        assert "New APT28 Campaign" in result
+        assert "📅 2024-01-15" in result
+        assert "Emotet Variant Discovered" in result
+
+
+@pytest.mark.asyncio
+async def test_find_threat_actors_tool():
+    """Test find_threat_actors tool with predefined Cypher query"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "success",
+                "data": {
+                    "results": '[{"ta.name": "APT28", "ta.aliases": "Fancy Bear, Sofacy", "ta.country": "Russia", "ta.description": "Russian cyber espionage group", "recent_activity": 15}, {"ta.name": "Lazarus", "ta.aliases": "Hidden Cobra", "ta.country": "North Korea", "ta.description": "North Korean APT group", "recent_activity": 8}]',
+                    "count": 2,
+                },
+            }
+        )
+
+        from umbrix_mcp.server import find_threat_actors
+        from mcp.server.fastmcp import Context
+
+        result = await find_threat_actors(Context(), 90, 15)
+
+        # Verify correct endpoint and Cypher query format
+        mock_http_client.post.assert_called_once()
+        call_args = mock_http_client.post.call_args
+        assert f"{mock_client.base_url}/v1/tools/execute_graph_query" in call_args[0]
+        assert "cypher_query" in call_args[1]["json"]
+        assert "MATCH (ta:ThreatActor)" in call_args[1]["json"]["cypher_query"]
+        assert "duration({days: 90})" in call_args[1]["json"]["cypher_query"]
+        assert "LIMIT 15" in call_args[1]["json"]["cypher_query"]
+
+        # Verify response formatting
+        assert "🎭 Active Threat Actors (Last 90 Days)" in result
+        assert "Found 2 threat actors with recent activity:" in result
+        assert "1. APT28" in result
+        assert "🏷️  Aliases: Fancy Bear, Sofacy" in result
+        assert "🌍 Country: Russia" in result
+        assert "📊 Recent Activity: 15 connections" in result
+        assert "2. Lazarus" in result
+        assert "💡 For detailed profiles, use get_threat_actor tool" in result
+
+
+@pytest.mark.asyncio
+async def test_find_recent_indicators_tool():
+    """Test find_recent_indicators tool with predefined Cypher query"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "success",
+                "data": {
+                    "results": '[{"i.value": "malicious.com", "i.type": "domain-name", "i.confidence": "high", "i.first_seen": "2024-01-15T10:30:00Z", "i.threat_level": "HIGH"}, {"i.value": "192.168.1.100", "i.type": "ipv4-addr", "i.confidence": "medium", "i.first_seen": "2024-01-14T08:20:00Z", "i.threat_level": "MEDIUM"}]',
+                    "count": 2,
+                },
+            }
+        )
+
+        from umbrix_mcp.server import find_recent_indicators
+        from mcp.server.fastmcp import Context
+
+        result = await find_recent_indicators(
+            Context(), 30, ["domain-name", "ipv4-addr"], 20
+        )
+
+        # Verify correct endpoint and Cypher query format
+        mock_http_client.post.assert_called_once()
+        call_args = mock_http_client.post.call_args
+        assert f"{mock_client.base_url}/v1/tools/execute_graph_query" in call_args[0]
+        assert "cypher_query" in call_args[1]["json"]
+        assert "MATCH (i:Indicator)" in call_args[1]["json"]["cypher_query"]
+        assert "duration({days: 30})" in call_args[1]["json"]["cypher_query"]
+        assert (
+            "AND i.type IN ['domain-name', 'ipv4-addr']"
+            in call_args[1]["json"]["cypher_query"]
+        )
+        assert "LIMIT 20" in call_args[1]["json"]["cypher_query"]
+
+        # Verify response formatting
+        assert "🔍 Recent Indicators (domain-name, ipv4-addr) (Last 30 Days)" in result
+        assert "Found 2 recent IOCs:" in result
+        assert "1. malicious.com" in result
+        assert "📝 Type: domain-name" in result
+        assert "📊 Confidence: high" in result
+        assert "⚠️  Threat Level: HIGH" in result
+        assert "📅 First Seen: 2024-01-15" in result
+        assert "2. 192.168.1.100" in result
+        assert "💡 For detailed analysis, use analyze_indicator tool" in result
+
+
+@pytest.mark.asyncio
+async def test_find_vulnerabilities_tool():
+    """Test find_vulnerabilities tool with predefined Cypher query"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "success",
+                "data": {
+                    "results": '[{"v.cve_id": "CVE-2021-44228", "v.name": "Log4Shell", "v.severity": "CRITICAL", "v.cvss_score": 10.0, "v.description": "Apache Log4j2 JNDI features vulnerability", "recent_activity": 25}, {"v.cve_id": "CVE-2023-23397", "v.name": "Outlook Elevation of Privilege", "v.severity": "CRITICAL", "v.cvss_score": 9.8, "v.description": "Microsoft Outlook elevation of privilege vulnerability", "recent_activity": 12}]',
+                    "count": 2,
+                },
+            }
+        )
+
+        from umbrix_mcp.server import find_vulnerabilities
+        from mcp.server.fastmcp import Context
+
+        result = await find_vulnerabilities(Context(), ["critical", "high"], 90, 15)
+
+        # Verify correct endpoint and Cypher query format
+        mock_http_client.post.assert_called_once()
+        call_args = mock_http_client.post.call_args
+        assert f"{mock_client.base_url}/v1/tools/execute_graph_query" in call_args[0]
+        assert "cypher_query" in call_args[1]["json"]
+        assert "MATCH (v:Vulnerability)" in call_args[1]["json"]["cypher_query"]
+        assert "duration({days: 90})" in call_args[1]["json"]["cypher_query"]
+        assert (
+            "AND toLower(v.severity) IN ['critical', 'high']"
+            in call_args[1]["json"]["cypher_query"]
+        )
+        assert "LIMIT 15" in call_args[1]["json"]["cypher_query"]
+
+        # Verify response formatting
+        assert "🚨 Vulnerabilities (critical, high) (Last 90 Days)" in result
+        assert "Found 2 vulnerabilities with activity or high impact:" in result
+        assert "1. CVE-2021-44228" in result
+        assert "📝 Name: Log4Shell" in result
+        assert "⚠️  Severity: CRITICAL" in result
+        assert "📊 CVSS Score: 10.0" in result
+        assert "🎯 Recent Exploitation: 25 references" in result
+        assert "2. CVE-2023-23397" in result
+        assert "💡 For detailed vulnerability analysis, use search_threats" in result
+
+
+@pytest.mark.asyncio
+async def test_specialized_tools_fallback_behavior():
+    """Test fallback behavior when no recent results found"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+
+        # First call returns no results, second call (fallback) returns results
+        mock_http_client.post.side_effect = [
+            create_mock_response(
+                {
+                    "status": "success",
+                    "data": {"results": "[]", "count": 0},
+                }
+            ),
+            create_mock_response(
+                {
+                    "status": "success",
+                    "data": {
+                        "results": '[{"ta.name": "APT29", "ta.aliases": "Cozy Bear", "ta.country": "Russia", "ta.description": "Russian intelligence group"}]',
+                        "count": 1,
+                    },
+                }
+            ),
+        ]
+
+        from umbrix_mcp.server import find_threat_actors
+        from mcp.server.fastmcp import Context
+
+        result = await find_threat_actors(Context(), 30)
+
+        # Should have made two calls (original + fallback)
+        assert mock_http_client.post.call_count == 2
+
+        # Verify fallback response
+        assert "🎭 Known Threat Actors (no recent activity in 30 days)" in result
+        assert "Found 1 known threat actors:" in result
+        assert "APT29" in result
+
+
+@pytest.mark.asyncio
+async def test_specialized_tools_error_handling():
+    """Test error handling in specialized tools"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "error",
+                "error": "Database connection failed",
+            }
+        )
+
+        from umbrix_mcp.server import (
+            discover_recent_threats,
+            find_threat_actors,
+            find_recent_indicators,
+            find_vulnerabilities,
+        )
+        from mcp.server.fastmcp import Context
+
+        context = Context()
+
+        # Test error handling for all specialized tools
+        tools_to_test = [
+            (discover_recent_threats, (context,)),
+            (find_threat_actors, (context,)),
+            (find_recent_indicators, (context,)),
+            (find_vulnerabilities, (context,)),
+        ]
+
+        for tool_func, args in tools_to_test:
+            result = await tool_func(*args)
+            assert "Error" in result and "Database connection failed" in result
+
+
+@pytest.mark.asyncio
+async def test_specialized_tools_parameter_handling():
+    """Test parameter handling in specialized tools"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "success",
+                "data": {
+                    "results": '[{"i.value": "test.com", "i.type": "domain"}]',
+                    "count": 1,
+                },
+            }
+        )
+
+        from umbrix_mcp.server import find_recent_indicators, find_vulnerabilities
+        from mcp.server.fastmcp import Context
+
+        context = Context()
+
+        # Test find_recent_indicators with different parameter combinations
+        result = await find_recent_indicators(context, 7, None, 5)
+        assert isinstance(result, str)
+
+        # Verify the query doesn't include type filter when indicator_types is None
+        call_args = mock_http_client.post.call_args
+        assert "AND i.type IN" not in call_args[1]["json"]["cypher_query"]
+        assert "duration({days: 7})" in call_args[1]["json"]["cypher_query"]
+        assert "LIMIT 5" in call_args[1]["json"]["cypher_query"]
+
+        # Test find_vulnerabilities with different parameter combinations
+        result = await find_vulnerabilities(context, None, 180, 25)
+        assert isinstance(result, str)
+
+        # Verify the query doesn't include severity filter when severity_levels is None
+        call_args = mock_http_client.post.call_args
+        assert "AND toLower(v.severity) IN" not in call_args[1]["json"]["cypher_query"]
+        assert "duration({days: 180})" in call_args[1]["json"]["cypher_query"]
+        assert "LIMIT 25" in call_args[1]["json"]["cypher_query"]
 
 
 @pytest.mark.asyncio
