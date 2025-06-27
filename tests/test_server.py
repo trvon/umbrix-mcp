@@ -318,11 +318,11 @@ async def test_threat_intel_chat_tool():
         # Verify HTTP client was called (multiple calls are expected for threat_intel_chat)
         assert mock_http_client.post.call_count >= 1
 
-        # Verify at least one call was made to execute_graph_query
+        # Verify at least one call was made to threat_intel_chat
         calls = mock_http_client.post.call_args_list
         assert any(
-            call[0][0].endswith("/v1/tools/execute_graph_query") for call in calls
-        ), "Expected at least one call to execute_graph_query endpoint"
+            call[0][0].endswith("/v1/tools/threat_intel_chat") for call in calls
+        ), "Expected at least one call to threat_intel_chat endpoint"
 
         # Verify response contains expected content
         assert isinstance(result, str)
@@ -458,7 +458,7 @@ async def test_get_attack_pattern_details_tool():
 
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/get_attack_pattern_details",
-            json={"pattern_name": "T1566.001"},
+            json={"attack_pattern_identifier": "T1566.001"},
         )
 
         assert "Attack Pattern Analysis: T1566.001" in result
@@ -503,7 +503,7 @@ async def test_get_vulnerability_details_tool():
 
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/get_vulnerability_details",
-            json={"vulnerability_name": "CVE-2021-44228"},
+            json={"vulnerability_identifier": "CVE-2021-44228"},
         )
 
         assert "Vulnerability Analysis: CVE-2021-44228" in result
@@ -524,17 +524,16 @@ async def test_threat_correlation_tool():
                 "data": {
                     "correlations": [
                         {
-                            "name": "APT29",
-                            "id": "intrusion-set-def",
-                            "relationship_type": "similar-tactics",
+                            "correlation_type": "infrastructure",
                             "confidence": 0.85,
-                            "first_seen": "2020-01-15T00:00:00Z",
+                            "description": "Shared C2 infrastructure",
+                            "evidence": ["Common IP ranges", "Similar hosting providers"],
                         },
                         {
-                            "name": "Cozy Bear",
-                            "id": "intrusion-set-ghi",
-                            "relationship_type": "alias",
+                            "correlation_type": "temporal",
                             "confidence": 0.95,
+                            "description": "Coordinated activity patterns",
+                            "evidence": ["Simultaneous campaigns"],
                         },
                     ]
                 },
@@ -544,21 +543,19 @@ async def test_threat_correlation_tool():
         from umbrix_mcp.server import threat_correlation
         from mcp.server.fastmcp import Context
 
-        result = await threat_correlation("actor", "APT28", "related_actors", Context())
+        result = await threat_correlation(["192.168.1.1", "malicious.com"], Context())
 
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/threat_correlation",
             json={
-                "entity_type": "actor",
-                "entity_name": "APT28",
-                "correlation_type": "related_actors",
+                "indicators": ["192.168.1.1", "malicious.com"],
             },
         )
 
-        assert "Threat Correlation Analysis" in result
-        assert "Entity: APT28 (actor)" in result
+        assert "🔗 Threat Correlation Analysis" in result
+        assert "Analyzed 2 indicators: 192.168.1.1, malicious.com" in result
         assert "Found 2 correlations:" in result
-        assert "Confidence: 0.85" in result
+        assert "Confidence:" in result
 
 
 @pytest.mark.asyncio
@@ -593,7 +590,7 @@ async def test_indicator_reputation_tool():
 
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/indicator_reputation",
-            json={"indicator": "192.168.1.100"},
+            json={"indicators": ["192.168.1.100"]},
         )
 
         assert "Indicator Reputation: 192.168.1.100" in result
@@ -686,8 +683,9 @@ async def test_ioc_validation_tool():
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/ioc_validation",
             json={
-                "ioc": "example.com",
-                "ioc_type": "domain",
+                "indicators": ["example.com"],
+                "validate_format": True,
+                "enrich_context": True,
             },
         )
 
@@ -746,7 +744,7 @@ async def test_network_analysis_tool():
 
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/network_analysis",
-            json={"network": "192.168.1.0/24"},
+            json={"targets": ["192.168.1.0/24"]},
         )
 
         assert "Network Analysis: 192.168.1.0/24" in result
@@ -867,8 +865,10 @@ async def test_threat_hunting_query_builder_tool():
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/threat_hunting_query_builder",
             json={
-                "hunt_type": "lateral_movement",
-                "parameters": parameters,
+                "hunt_objectives": ["lateral_movement"],
+                "filters": parameters,
+                "include_suggestions": True,
+                "validate_syntax": True,
             },
         )
 
@@ -913,7 +913,7 @@ async def test_report_generation_tool():
             f"{mock_client.base_url}/v1/tools/report_generation",
             json={
                 "report_type": "actor_profile",
-                "entity_name": "APT28",
+                "entities": ["APT28"],
                 "format": "markdown",
             },
         )
@@ -1059,7 +1059,20 @@ async def test_discover_recent_threats_tool():
             {
                 "status": "success",
                 "data": {
-                    "results": '[{"a.title": "New APT28 Campaign", "a.timestamp": "2024-01-15T10:30:00Z", "a.summary": "Advanced phishing campaign", "a.url": "https://example.com/report1"}, {"a.title": "Emotet Variant Discovered", "a.timestamp": "2024-01-14T08:20:00Z", "a.summary": "New banking trojan variant", "a.url": "https://example.com/report2"}]',
+                    "threats": [
+                        {
+                            "title": "New APT28 Campaign",
+                            "type": "Article",
+                            "timestamp": "2024-01-15T10:30:00Z",
+                            "description": "Advanced phishing campaign targeting government entities",
+                        },
+                        {
+                            "title": "Emotet Variant Discovered",
+                            "type": "Article", 
+                            "timestamp": "2024-01-14T08:20:00Z",
+                            "description": "New banking trojan variant with enhanced evasion capabilities",
+                        },
+                    ],
                     "count": 2,
                 },
             }
@@ -1070,19 +1083,17 @@ async def test_discover_recent_threats_tool():
 
         result = await discover_recent_threats(Context(), 30)
 
-        # Verify correct endpoint and Cypher query format
-        mock_http_client.post.assert_called_once()
-        call_args = mock_http_client.post.call_args
-        assert f"{mock_client.base_url}/v1/tools/execute_graph_query" in call_args[0]
-        assert "cypher_query" in call_args[1]["json"]
-        assert "MATCH (a:Article)" in call_args[1]["json"]["cypher_query"]
-        assert "duration({days: 30})" in call_args[1]["json"]["cypher_query"]
+        # Verify correct endpoint was called
+        mock_http_client.post.assert_called_once_with(
+            f"{mock_client.base_url}/v1/tools/discover_recent_threats",
+            json={"days_back": 30},
+        )
 
         # Verify response formatting
         assert "🔍 Recent Threat Intelligence (Last 30 Days)" in result
-        assert "Found 2 recent articles and threats:" in result
+        assert "Found 2 recent threats:" in result
         assert "New APT28 Campaign" in result
-        assert "📅 2024-01-15" in result
+        assert "2024-01-15" in result
         assert "Emotet Variant Discovered" in result
 
 

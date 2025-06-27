@@ -136,62 +136,57 @@ async def discover_recent_threats(ctx: Context, days_back: int = 30) -> str:
         days_back: Number of days to look back (default: 30)
     """
     try:
-        logger.info(f"Discovering recent threats for the last {days_back} days")
+        logger.info(
+            f"Discovering recent threats for the last {days_back} days via enhanced LLM tool"
+        )
 
-        # Use direct Cypher queries that we know work well
-        recent_articles_query = f"""
-        MATCH (a:Article) 
-        WHERE a.timestamp IS NOT NULL 
-        AND datetime(a.timestamp) >= datetime() - duration({{days: {days_back}}})
-        RETURN a.title, a.timestamp, a.summary, a.url
-        ORDER BY a.timestamp DESC 
-        LIMIT 15
-        """
-
+        # Use the enhanced discover_recent_threats LLM tool instead of hardcoded queries
         response = await umbrix_client.client.post(
-            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
-            json={"cypher_query": recent_articles_query},
+            f"{umbrix_client.base_url}/v1/tools/discover_recent_threats",
+            json={"days_back": days_back},
         )
         response.raise_for_status()
         result = response.json()
 
         if result.get("status") == "success":
             data = result.get("data", {})
-            results = data.get("results", "")
+
+            # Extract the enhanced diagnostic message and threat data
+            summary = data.get("summary", "")
+            message = data.get("message", "")
+            threats = data.get("threats", [])
             count = data.get("count", 0)
 
             if count > 0:
-                summary = f"🔍 Recent Threat Intelligence (Last {days_back} Days)\n"
-                summary += f"Found {count} recent articles and threats:\n\n"
+                # Format the threat data for better readability
+                output = f"🔍 Recent Threat Intelligence (Last {days_back} Days)\n"
+                output += f"Found {count} recent threats:\n\n"
 
-                # Parse the results to format them nicely
-                import json as json_mod
+                for i, threat in enumerate(threats[:10], 1):
+                    title = threat.get("title", "Unknown Entity")
+                    threat_type = threat.get("type", "Entity")
+                    timestamp = threat.get("timestamp", "Unknown time")
+                    description = threat.get("description", "No description available")
 
-                try:
-                    if results.startswith("[") and results.endswith("]"):
-                        articles = json_mod.loads(results)
-                        for i, article in enumerate(articles[:10], 1):
-                            title = article.get("a.title", "Unknown")
-                            timestamp = article.get("a.timestamp", "")[:10]  # Just date
-                            summary += f"{i}. {title}\n"
-                            if timestamp:
-                                summary += f"   📅 {timestamp}\n"
-                            summary += "\n"
+                    output += f"{i}. {title} ({threat_type})\n"
+                    if timestamp != "Unknown time":
+                        output += f"   📅 {timestamp}\n"
+                    if description != "No description available":
+                        output += f"   📝 {description[:100]}{'...' if len(description) > 100 else ''}\n"
+                    output += "\n"
 
-                        if len(articles) > 10:
-                            summary += (
-                                f"... and {len(articles) - 10} more recent threats\n"
-                            )
-                    else:
-                        summary += results
+                if len(threats) > 10:
+                    output += f"... and {len(threats) - 10} more recent threats\n\n"
 
-                except Exception:
-                    summary += results
-
-                summary += "\n💡 For specific details, use get_threat_actor, analyze_indicator, or execute_graph_query tools."
-                return summary
+                output += "💡 For specific details, use get_threat_actor, analyze_indicator, or execute_graph_query tools."
+                return output
             else:
-                return "No recent threat activity found in the specified timeframe."
+                # Return the enhanced diagnostic message
+                return (
+                    message
+                    or summary
+                    or "No recent threat activity found in the specified timeframe."
+                )
         else:
             return f"Error discovering threats: {result.get('error', 'Unknown error')}"
 
@@ -539,39 +534,50 @@ async def threat_intel_chat(question: str, ctx: Context) -> str:
         question: Analytical question about threats, tactics, attribution, trends, etc.
     """
     try:
-        logger.info(f"Processing graph-based threat intelligence question: {question}")
+        logger.info(
+            f"Processing threat intelligence question via enhanced LLM tool: {question}"
+        )
 
-        # First, try to extract specific entities from the question
-        entities = await _extract_entities_from_question(question)
+        # Use the enhanced threat_intel_chat LLM tool instead of hardcoded graph traversal
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/threat_intel_chat",
+            json={"question": question},
+        )
+        response.raise_for_status()
+        result = response.json()
 
-        if entities:
-            # Use graph traversal to get actual data
-            graph_data = await _get_graph_traversal_data(entities, question)
-            if graph_data:
-                return await _validate_and_enrich_links(graph_data)
+        if result.get("status") == "success":
+            data = result.get("data", {})
 
-        # Try focused graph queries based on question type
-        focused_results = await _get_focused_graph_analysis(question)
-        if focused_results:
-            return await _validate_and_enrich_links(focused_results)
+            # Extract the enhanced answer and sources
+            answer = data.get("answer", "")
+            message = data.get("message", "")
+            sources = data.get("sources", [])
 
-        # Fallback to available data exploration
-        guidance = _generate_analytical_guidance(question)
-        basic_data = await _get_contextual_data(question)
+            if answer and answer != "No specific graph data found for this query":
+                output = f"🧠 Threat Intelligence Analysis\n\n{answer}"
 
-        response = f"Graph-Based Analysis for: '{question}'\n\n"
-        response += f"⚠️ No specific graph data found for this query.\n\n{guidance}"
-        if basic_data:
-            response += f"\n\nAvailable Graph Data:\n{basic_data}"
+                # Add source information if available
+                if sources:
+                    output += "\n\n📚 Sources:\n"
+                    for i, source in enumerate(sources[:5], 1):
+                        source_text = source.get("text", "")
+                        if source_text:
+                            output += f"{i}. {source_text[:100]}{'...' if len(source_text) > 100 else ''}\n"
 
-        response += "\n\n💡 Try using more specific entity names (APT groups, malware families, etc.) or use discover_recent_threats to see available data."
-
-        return response
+                return output
+            else:
+                # Return the enhanced guidance message
+                return (
+                    message
+                    or f"No specific data found for: '{question}'\n\n💡 Try using discover_recent_threats to see available data or use more specific entity names."
+                )
+        else:
+            return f"Error in threat intelligence analysis: {result.get('error', 'Unknown error')}"
 
     except Exception as e:
         logger.error(f"Error in threat intel chat: {e}")
-        guidance = _generate_analytical_guidance(question)
-        return f"Error accessing graph database: {str(e)}\n\nSuggested approach:\n{guidance}"
+        return f"Error accessing threat intelligence system: {str(e)}\n\n💡 Try using discover_recent_threats to see available data or use more specific search terms."
 
 
 # Enhanced graph traversal and validation functions
@@ -1348,7 +1354,7 @@ async def get_attack_pattern_details(pattern_name: str, ctx: Context) -> str:
         logger.info(f"Getting attack pattern details: {pattern_name}")
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/get_attack_pattern_details",
-            json={"pattern_name": pattern_name},
+            json={"attack_pattern_identifier": pattern_name},
         )
         response.raise_for_status()
         result = response.json()
@@ -1415,7 +1421,7 @@ async def get_vulnerability_details(vulnerability_id: str, ctx: Context) -> str:
         logger.info(f"Getting vulnerability details: {vulnerability_id}")
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/get_vulnerability_details",
-            json={"vulnerability_name": vulnerability_id},
+            json={"vulnerability_identifier": vulnerability_id},
         )
         response.raise_for_status()
         result = response.json()
@@ -1478,24 +1484,25 @@ async def get_vulnerability_details(vulnerability_id: str, ctx: Context) -> str:
 
 @mcp.tool()
 async def threat_correlation(
-    entity_type: str, entity_name: str, correlation_type: str, ctx: Context
+    indicators: list[str], ctx: Context, correlation_types: list[str] = None
 ) -> str:
-    """Find correlations between threat entities
+    """Find correlations between threat indicators
 
     Args:
-        entity_type: Type of entity (actor, malware, campaign, indicator)
-        entity_name: Name or ID of the entity
-        correlation_type: Type of correlation (related_actors, used_tools, common_ttps, infrastructure)
+        indicators: List of indicators to analyze for correlations (IPs, domains, hashes, etc.)
+        correlation_types: Optional list of correlation types to focus on (infrastructure, ttp, temporal, attribution, campaign)
     """
     try:
-        logger.info(f"Finding correlations for {entity_type}: {entity_name}")
+        logger.info(f"Finding correlations between {len(indicators)} indicators")
+
+        # Prepare the request payload to match backend expectations
+        payload = {"indicators": indicators}
+        if correlation_types:
+            payload["correlation_types"] = correlation_types
+
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/threat_correlation",
-            json={
-                "entity_type": entity_type,
-                "entity_name": entity_name,
-                "correlation_type": correlation_type,
-            },
+            json=payload,
         )
         response.raise_for_status()
         result = response.json()
@@ -1503,27 +1510,44 @@ async def threat_correlation(
         if result.get("status") == "success":
             data = result.get("data", {})
             correlations = data.get("correlations", [])
+            analysis = data.get("analysis", {})
 
-            summary = "Threat Correlation Analysis\n"
-            summary += f"Entity: {entity_name} ({entity_type})\n"
-            summary += f"Correlation Type: {correlation_type}\n\n"
+            summary = "🔗 Threat Correlation Analysis\n"
+            summary += f"Analyzed {len(indicators)} indicators: {', '.join(indicators[:3])}{'...' if len(indicators) > 3 else ''}\n\n"
 
             if not correlations:
-                summary += "No correlations found."
+                summary += "No correlations found between the provided indicators."
             else:
                 summary += f"Found {len(correlations)} correlations:\n\n"
                 for i, corr in enumerate(correlations[:10], 1):
-                    summary += f"{i}. {corr.get('name', corr.get('id', 'Unknown'))}\n"
-                    if corr.get("relationship_type"):
-                        summary += f"   Relationship: {corr['relationship_type']}\n"
-                    if corr.get("confidence"):
-                        summary += f"   Confidence: {corr['confidence']}\n"
-                    if corr.get("first_seen"):
-                        summary += f"   First Seen: {corr['first_seen']}\n"
+                    correlation_type = corr.get("correlation_type", "Unknown")
+                    confidence = corr.get("confidence", 0)
+                    description = corr.get("description", "No description")
+
+                    summary += f"{i}. {correlation_type.title()} Correlation\n"
+                    summary += f"   Confidence: {confidence:.1%}\n"
+                    summary += f"   Description: {description}\n"
+
+                    if corr.get("evidence"):
+                        evidence = corr["evidence"][
+                            :2
+                        ]  # Show first 2 pieces of evidence
+                        summary += f"   Evidence: {', '.join(evidence)}\n"
                     summary += "\n"
 
                 if len(correlations) > 10:
-                    summary += f"... and {len(correlations) - 10} more correlations"
+                    summary += f"... and {len(correlations) - 10} more correlations\n"
+
+            # Add executive summary if available
+            if analysis.get("summary"):
+                summary += f"\n📋 Executive Summary:\n{analysis['summary']}\n"
+
+            # Add recommendations if available
+            if analysis.get("recommendations"):
+                recommendations = analysis["recommendations"][:3]  # Show top 3
+                summary += "\n💡 Recommendations:\n"
+                for i, rec in enumerate(recommendations, 1):
+                    summary += f"{i}. {rec}\n"
 
             return summary
         else:
@@ -1544,7 +1568,7 @@ async def indicator_reputation(indicator: str, ctx: Context) -> str:
         logger.info(f"Checking reputation for indicator: {indicator}")
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/indicator_reputation",
-            json={"indicator": indicator},
+            json={"indicators": [indicator]},
         )
         response.raise_for_status()
         result = response.json()
@@ -1776,8 +1800,9 @@ async def ioc_validation(ioc: str, ioc_type: str, ctx: Context) -> str:
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/ioc_validation",
             json={
-                "ioc": ioc,
-                "ioc_type": ioc_type,
+                "indicators": [ioc],
+                "validate_format": True,
+                "enrich_context": True,
             },
         )
         response.raise_for_status()
@@ -1837,7 +1862,7 @@ async def network_analysis(network: str, ctx: Context) -> str:
         logger.info(f"Analyzing network: {network}")
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/network_analysis",
-            json={"network": network},
+            json={"targets": [network]},
         )
         response.raise_for_status()
         result = response.json()
@@ -2133,8 +2158,10 @@ async def threat_hunting_query_builder(
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/threat_hunting_query_builder",
             json={
-                "hunt_type": hunt_type,
-                "parameters": parameters,
+                "hunt_objectives": [hunt_type],
+                "filters": parameters,
+                "include_suggestions": True,
+                "validate_syntax": True,
             },
         )
         response.raise_for_status()
@@ -2199,7 +2226,7 @@ async def report_generation(
             f"{umbrix_client.base_url}/v1/tools/report_generation",
             json={
                 "report_type": report_type,
-                "entity_name": entity_name,
+                "entities": [entity_name],
                 "format": format,
             },
         )
