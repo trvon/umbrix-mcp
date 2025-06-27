@@ -527,7 +527,10 @@ async def test_threat_correlation_tool():
                             "correlation_type": "infrastructure",
                             "confidence": 0.85,
                             "description": "Shared C2 infrastructure",
-                            "evidence": ["Common IP ranges", "Similar hosting providers"],
+                            "evidence": [
+                                "Common IP ranges",
+                                "Similar hosting providers",
+                            ],
                         },
                         {
                             "correlation_type": "temporal",
@@ -1068,7 +1071,7 @@ async def test_discover_recent_threats_tool():
                         },
                         {
                             "title": "Emotet Variant Discovered",
-                            "type": "Article", 
+                            "type": "Article",
                             "timestamp": "2024-01-14T08:20:00Z",
                             "description": "New banking trojan variant with enhanced evasion capabilities",
                         },

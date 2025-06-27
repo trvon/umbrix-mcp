@@ -248,7 +248,7 @@ async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
         try:
             basic_stats = await _get_basic_database_stats()
             return f"Error accessing graph database: {str(e)}\n\nDatabase Status: {basic_stats}\n\nTry using discover_recent_threats to see what verified data is available."
-        except:
+        except Exception:
             return f"Error: {str(e)}\n\nSuggestion: Try discover_recent_threats to see available data or use more specific search terms."
 
 
@@ -491,7 +491,7 @@ async def execute_graph_query(cypher_query: str, ctx: Context) -> str:
                             summary += (
                                 f"... and {len(parsed_results) - 10} more results\n"
                             )
-                    except:
+                    except (json.JSONDecodeError, KeyError, TypeError):
                         summary += results
                 else:
                     # Handle comma-separated JSON objects
@@ -1033,7 +1033,7 @@ async def _get_basic_database_stats() -> str:
             result = response.json()
             if result.get("status") == "success":
                 return f"Database contains: {result.get('data', {}).get('results', 'unknown data')}"
-    except:
+    except Exception:
         pass
     return "Database status unknown"
 
@@ -1122,7 +1122,7 @@ async def _get_contextual_data(question: str) -> str:
             result = response.json()
             if result.get("status") == "success":
                 return f"Database contains: {result.get('data', {}).get('results', 'unknown data')}"
-    except:
+    except Exception:
         pass
     return "Database status unknown"
 
