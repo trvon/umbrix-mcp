@@ -473,7 +473,7 @@ async def execute_graph_query(cypher_query: str, ctx: Context) -> str:
                 return "Query executed successfully but returned no results."
 
             # Results are returned as a comma-separated string of JSON objects
-            summary = f"Graph Query Results"
+            summary = "Graph Query Results"
             if count > 0:
                 summary += f" ({count} results"
                 if truncated:
@@ -1371,7 +1371,7 @@ async def get_attack_pattern_details(pattern_name: str, ctx: Context) -> str:
 
             # Kill chain phases
             if data.get("kill_chain_phases"):
-                summary += f"\nKill Chain Phases:\n"
+                summary += "\nKill Chain Phases:\n"
                 for phase in data["kill_chain_phases"]:
                     summary += f"  • {phase.get('kill_chain_name', '')}: {phase.get('phase_name', '')}\n"
 
@@ -1449,7 +1449,7 @@ async def get_vulnerability_details(vulnerability_id: str, ctx: Context) -> str:
 
             # External references
             if data.get("external_references"):
-                summary += f"\nReferences:\n"
+                summary += "\nReferences:\n"
                 for ref in data["external_references"][:5]:
                     summary += f"  • {ref.get('source_name', '')}: {ref.get('url', ref.get('external_id', ''))}\n"
 
@@ -1504,7 +1504,7 @@ async def threat_correlation(
             data = result.get("data", {})
             correlations = data.get("correlations", [])
 
-            summary = f"Threat Correlation Analysis\n"
+            summary = "Threat Correlation Analysis\n"
             summary += f"Entity: {entity_name} ({entity_type})\n"
             summary += f"Correlation Type: {correlation_type}\n\n"
 
@@ -1578,7 +1578,7 @@ async def indicator_reputation(indicator: str, ctx: Context) -> str:
 
             # Associated threats
             if data.get("associated_threats"):
-                summary += f"\nAssociated Threats:\n"
+                summary += "\nAssociated Threats:\n"
                 for threat in data["associated_threats"][:5]:
                     summary += (
                         f"  • {threat.get('type', '')}: {threat.get('name', '')}\n"
@@ -1733,13 +1733,13 @@ async def threat_actor_attribution(indicators: list[str], ctx: Context) -> str:
             data = result.get("data", {})
             attributions = data.get("attributions", [])
 
-            summary = f"Threat Actor Attribution Analysis\n"
+            summary = "Threat Actor Attribution Analysis\n"
             summary += f"Analyzed {len(indicators)} indicators\n\n"
 
             if not attributions:
                 summary += "No threat actor attributions found."
             else:
-                summary += f"Potential Attributions:\n\n"
+                summary += "Potential Attributions:\n\n"
                 for i, attr in enumerate(attributions[:5], 1):
                     summary += f"{i}. {attr.get('actor_name', 'Unknown Actor')}\n"
                     summary += f"   Confidence: {attr.get('confidence', 0):.1%}\n"
@@ -2056,7 +2056,7 @@ async def timeline_analysis(
             data = result.get("data", {})
             timeline = data.get("timeline", [])
             patterns = data.get("patterns", [])
-            correlations = data.get("correlations", [])
+            data.get("correlations", [])
             statistics = data.get("statistics", {})
             insights = data.get("insights", [])
 
@@ -2164,13 +2164,13 @@ async def threat_hunting_query_builder(
 
             # Related techniques
             if data.get("related_techniques"):
-                summary += f"Related MITRE Techniques:\n"
+                summary += "Related MITRE Techniques:\n"
                 for technique in data["related_techniques"][:5]:
                     summary += f"  • {technique}\n"
 
             # False positive considerations
             if data.get("false_positives"):
-                summary += f"\nFalse Positive Considerations:\n"
+                summary += "\nFalse Positive Considerations:\n"
                 for fp in data["false_positives"][:3]:
                     summary += f"  • {fp}\n"
 

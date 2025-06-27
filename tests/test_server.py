@@ -5,8 +5,7 @@ response format verification, error handling, and integration testing.
 """
 
 import pytest
-import json
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from umbrix_mcp.server import UmbrixClient
 
 
@@ -1033,9 +1032,6 @@ async def test_parameter_validation():
     from umbrix_mcp.server import (
         search_threats,
         analyze_indicator,
-        get_threat_actor,
-        threat_correlation,
-        timeline_analysis,
     )
     from mcp.server.fastmcp import Context
 
