@@ -40,18 +40,28 @@ docker build -t umbrix-mcp:latest .
 
 ##  Available Tools
 
-### Core Intelligence Analysis (5 tools)
+> **Note**: The umbrix-mcp client provides 22 tools that interface with Umbrix's threat intelligence platform. The backend MCP server has 17 core tools, while this client adds additional convenience tools for easier interaction.
+
+### Discovery & Search (5 tools - client only)
+- **discover_recent_threats** - Start here! Shows latest activity and data overview
 - **search_threats** - Search across all threat intelligence sources using natural language
-- **analyze_indicator** - Analyze IPs, domains, hashes, URLs with full STIX details
+- **find_threat_actors** - Find active threat actors with recent activity
+- **find_recent_indicators** - Find latest IOCs by type and timeframe
+- **find_vulnerabilities** - Find exploited CVEs and vulnerabilities
+
+### Core Intelligence Analysis (3 tools)
+- **analyze_indicator** - Analyze IPs, domains, hashes, URLs with full context
 - **get_threat_actor** - Get detailed threat actor profiles and attribution
 - **threat_intel_chat** - Natural language Q&A about threats with graph context
-- **execute_graph_query** - Run Cypher queries against the threat intelligence graph
 
 ### Entity Details (4 tools)
 - **get_malware_details** - Detailed malware analysis and family information
 - **get_campaign_details** - Threat campaign analysis and attribution
 - **get_attack_pattern_details** - MITRE ATT&CK technique details and usage
 - **get_vulnerability_details** - CVE details, CVSS scores, and exploitation data
+
+### Graph Query (1 tool)
+- **execute_graph_query** - Run Cypher queries against the threat intelligence graph
 
 ### Threat Analysis & Correlation (6 tools)
 - **threat_correlation** - Find relationships between threat entities
