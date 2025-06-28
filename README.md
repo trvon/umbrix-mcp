@@ -40,7 +40,7 @@ docker build -t umbrix-mcp:latest .
 
 ##  Available Tools
 
-> **Note**: The umbrix-mcp client provides 22 tools that interface with Umbrix's threat intelligence platform. The backend MCP server has 17 core tools, while this client adds additional convenience tools for easier interaction.
+> **Note**: The umbrix-mcp client provides 17 tools that interface with Umbrix's threat intelligence platform. The backend MCP server has 17 core tools, while this client adds additional convenience tools for easier interaction.
 
 ### Discovery & Search (5 tools - client only)
 - **discover_recent_threats** - Start here! Shows latest activity and data overview
@@ -54,22 +54,10 @@ docker build -t umbrix-mcp:latest .
 - **get_threat_actor** - Get detailed threat actor profiles and attribution
 - **threat_intel_chat** - Natural language Q&A about threats with graph context
 
-### Entity Details (4 tools)
-- **get_malware_details** - Detailed malware analysis and family information
-- **get_campaign_details** - Threat campaign analysis and attribution
-- **get_attack_pattern_details** - MITRE ATT&CK technique details and usage
-- **get_vulnerability_details** - CVE details, CVSS scores, and exploitation data
-
 ### Graph Query (1 tool)
 - **execute_graph_query** - Run Cypher queries against the threat intelligence graph
-
-### Threat Analysis & Correlation (6 tools)
-- **threat_correlation** - Find relationships between threat entities
-- **indicator_reputation** - Multi-source reputation scoring for indicators
-- **threat_actor_attribution** - Attribute indicators to threat actors
-- **ioc_validation** - Validate and enrich indicators with context
-- **network_analysis** - Analyze network ranges for threat intelligence
-- **timeline_analysis** - Analyze threat activity over time periods
+- **get_malware_details** - Detailed malware analysis and family information
+- **get_campaign_details** - Threat campaign analysis and attribution
 
 ### Threat Hunting & Reporting (3 tools)
 - **threat_hunting_query_builder** - Generate threat hunting queries
