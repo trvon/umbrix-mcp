@@ -263,23 +263,18 @@ async def analyze_indicator(
     try:
         logger.info(f"Analyzing indicator from graph: {indicator}")
 
-        # Query graph database directly for indicator
+        # Query graph database directly for indicator (optimized with size() functions)
         query = f"""
         MATCH (i:Indicator)
         WHERE toLower(i.value) = '{indicator.lower()}' OR toLower(i.value) CONTAINS '{indicator.lower()}'
-        OPTIONAL MATCH (i)<-[:USES]-(ta:ThreatActor)
-        OPTIONAL MATCH (i)<-[:INDICATES]-(m:Malware)
-        OPTIONAL MATCH (i)<-[:LINKED_TO]-(c:Campaign)
-        OPTIONAL MATCH (i)-[:GEOLOCATED_TO]->(geo:Country)
-        OPTIONAL MATCH (i)-[:HAS_REPUTATION]->(rep:Reputation)
         RETURN i.value as value, i.type as type, i.threat_level as threat_level,
                i.confidence as confidence, i.first_seen as first_seen, i.last_seen as last_seen,
                i.description as description,
-               collect(DISTINCT ta.name)[..5] as actors,
-               collect(DISTINCT m.name)[..5] as malware,
-               collect(DISTINCT c.name)[..5] as campaigns,
-               collect(DISTINCT geo.name)[..3] as geolocation,
-               collect(DISTINCT rep.score)[..1] as reputation_scores
+               size((:ThreatActor)-[:USES]->(i)) as actor_count,
+               size((:Malware)-[:INDICATES]->(i)) as malware_count,
+               size((:Campaign)-[:LINKED_TO]->(i)) as campaign_count,
+               size((i)-[:GEOLOCATED_TO]->(:Country)) as geolocation_count,
+               size((i)-[:HAS_REPUTATION]->(:Reputation)) as reputation_count
         LIMIT 3
         """
 
@@ -352,21 +347,17 @@ async def get_threat_actor(actor_name: str, ctx: Context) -> str:
     try:
         logger.info(f"Getting threat actor from graph: {actor_name}")
 
-        # Query graph database directly for threat actor
+        # Query graph database directly for threat actor (optimized with size() functions)
         query = f"""
         MATCH (ta:ThreatActor)
         WHERE toLower(ta.name) CONTAINS '{actor_name.lower()}' 
            OR ANY(alias IN ta.aliases WHERE toLower(alias) CONTAINS '{actor_name.lower()}')
-        OPTIONAL MATCH (ta)-[:USES]->(m:Malware)
-        OPTIONAL MATCH (ta)-[:ATTRIBUTED_TO]->(c:Campaign)
-        OPTIONAL MATCH (ta)-[:TARGETS]->(s:Sector)
-        OPTIONAL MATCH (ta)-[:USES]->(t:Technique)
         RETURN ta.name as name, ta.aliases as aliases, ta.description as description,
                ta.country as country, ta.first_seen as first_seen, ta.last_seen as last_seen,
-               collect(DISTINCT m.name)[..5] as malware,
-               collect(DISTINCT c.name)[..5] as campaigns,
-               collect(DISTINCT s.name)[..5] as targets,
-               collect(DISTINCT t.name)[..5] as techniques
+               size((ta)-[:USES]->(:Malware)) as malware_count,
+               size((ta)-[:ATTRIBUTED_TO]->(:Campaign)) as campaign_count,
+               size((ta)-[:TARGETS]->(:Sector)) as target_count,
+               size((ta)-[:USES]->(:Technique)) as technique_count
         LIMIT 3
         """
 
@@ -677,25 +668,25 @@ async def _get_focused_graph_analysis(question: str) -> str:
     elif any(term in question_lower for term in ["actor", "apt", "group"]):
         query = """
         MATCH (ta:ThreatActor)
-        OPTIONAL MATCH (ta)-[:USES]->(m:Malware)
-        OPTIONAL MATCH (ta)-[:TARGETS]->(s:Sector)
-        RETURN ta.name, ta.aliases, ta.country, collect(DISTINCT m.name)[..3] as malware, collect(DISTINCT s.name)[..3] as targets
+        RETURN ta.name, ta.aliases, ta.country, 
+               size((ta)-[:USES]->(:Malware)) as malware_count,
+               size((ta)-[:TARGETS]->(:Sector)) as target_count
         ORDER BY ta.name
         LIMIT 5
         """
     elif any(term in question_lower for term in ["malware", "ransomware", "trojan"]):
         query = """
         MATCH (m:Malware)
-        OPTIONAL MATCH (m)<-[:USES]-(ta:ThreatActor)
-        RETURN m.name, m.family, m.type, collect(DISTINCT ta.name)[..3] as actors
+        RETURN m.name, m.family, m.type,
+               size((:ThreatActor)-[:USES]->(m)) as actor_count
         ORDER BY m.name
         LIMIT 5
         """
     elif any(term in question_lower for term in ["campaign", "operation"]):
         query = """
         MATCH (c:Campaign)
-        OPTIONAL MATCH (c)<-[:ATTRIBUTED_TO]-(ta:ThreatActor)
-        RETURN c.name, c.description, c.first_seen, c.last_seen, collect(DISTINCT ta.name)[..3] as actors
+        RETURN c.name, c.description, c.first_seen, c.last_seen,
+               size((:ThreatActor)-[:ATTRIBUTED_TO]->(c)) as actor_count
         ORDER BY c.last_seen DESC
         LIMIT 5
         """
@@ -760,15 +751,13 @@ async def _get_search_pattern_results(query: str, limit: int) -> str:
     """Get search results based on query patterns"""
     query_lower = query.lower()
 
-    # Different patterns for different types of searches
+    # Different patterns for different types of searches (optimized with size() functions)
     if any(term in query_lower for term in ["actor", "apt", "group"]):
         cypher_query = """
         MATCH (ta:ThreatActor)
-        OPTIONAL MATCH (ta)-[:USES]->(m:Malware)
-        OPTIONAL MATCH (ta)-[:ATTRIBUTED_TO]->(c:Campaign)
         RETURN ta.name as name, ta.aliases as aliases, ta.country as country,
-               collect(DISTINCT m.name)[..3] as malware,
-               collect(DISTINCT c.name)[..3] as campaigns
+               size((ta)-[:USES]->(:Malware)) as malware_count,
+               size((ta)-[:ATTRIBUTED_TO]->(:Campaign)) as campaign_count
         ORDER BY ta.name
         LIMIT """ + str(
             limit
@@ -778,11 +767,9 @@ async def _get_search_pattern_results(query: str, limit: int) -> str:
     ):
         cypher_query = """
         MATCH (m:Malware)
-        OPTIONAL MATCH (m)<-[:USES]-(ta:ThreatActor)
-        OPTIONAL MATCH (m)-[:USED_IN]->(c:Campaign)
         RETURN m.name as name, m.family as family, m.type as type,
-               collect(DISTINCT ta.name)[..3] as actors,
-               collect(DISTINCT c.name)[..3] as campaigns
+               size((:ThreatActor)-[:USES]->(m)) as actor_count,
+               size((m)-[:USED_IN]->(:Campaign)) as campaign_count
         ORDER BY m.name
         LIMIT """ + str(
             limit
@@ -790,12 +777,10 @@ async def _get_search_pattern_results(query: str, limit: int) -> str:
     elif any(term in query_lower for term in ["campaign", "operation"]):
         cypher_query = """
         MATCH (c:Campaign)
-        OPTIONAL MATCH (c)<-[:ATTRIBUTED_TO]-(ta:ThreatActor)
-        OPTIONAL MATCH (c)<-[:USED_IN]-(m:Malware)
         RETURN c.name as name, c.description as description,
                c.first_seen as first_seen, c.last_seen as last_seen,
-               collect(DISTINCT ta.name)[..3] as actors,
-               collect(DISTINCT m.name)[..3] as malware
+               size((:ThreatActor)-[:ATTRIBUTED_TO]->(c)) as actor_count,
+               size((:Malware)-[:USED_IN]->(c)) as malware_count
         ORDER BY c.last_seen DESC
         LIMIT """ + str(
             limit
@@ -849,13 +834,11 @@ async def _get_search_pattern_results(query: str, limit: int) -> str:
         WHERE v.cve_id IS NOT NULL 
         {time_filter}
         {product_filter}
-        OPTIONAL MATCH (v)<-[:EXPLOITS]-(m:Malware)
-        OPTIONAL MATCH (v)-[:AFFECTS]->(p:Product)
         RETURN v.cve_id as cve, v.name as name, v.severity as severity,
                v.cvss_score as cvss, v.description as description, 
                v.published_date as published, v.affected_product as product,
-               collect(DISTINCT m.name)[..3] as exploiting_malware,
-               collect(DISTINCT p.name)[..3] as affected_products
+               size((:Malware)-[:EXPLOITS]->(v)) as exploiting_malware_count,
+               size((v)-[:AFFECTS]->(:Product)) as affected_products_count
         ORDER BY v.published_date DESC, v.cvss_score DESC
         LIMIT {limit}
         """
@@ -1176,22 +1159,18 @@ async def get_malware_details(malware_name: str, ctx: Context) -> str:
     try:
         logger.info(f"Getting malware details from graph: {malware_name}")
 
-        # Query graph database directly for malware
+        # Query graph database directly for malware (optimized with size() functions)
         query = f"""
         MATCH (m:Malware)
         WHERE toLower(m.name) CONTAINS '{malware_name.lower()}' 
            OR ANY(alias IN m.aliases WHERE toLower(alias) CONTAINS '{malware_name.lower()}')
-        OPTIONAL MATCH (m)<-[:USES]-(ta:ThreatActor)
-        OPTIONAL MATCH (m)-[:USED_IN]->(c:Campaign)
-        OPTIONAL MATCH (m)-[:EXPLOITS]->(v:Vulnerability)
-        OPTIONAL MATCH (m)-[:USES]->(t:Technique)
         RETURN m.name as name, m.aliases as aliases, m.family as family,
                m.type as type, m.description as description,
                m.first_seen as first_seen, m.last_seen as last_seen,
-               collect(DISTINCT ta.name)[..5] as actors,
-               collect(DISTINCT c.name)[..5] as campaigns,
-               collect(DISTINCT v.cve_id)[..5] as vulnerabilities,
-               collect(DISTINCT t.name)[..5] as techniques
+               size((:ThreatActor)-[:USES]->(m)) as actor_count,
+               size((m)-[:USED_IN]->(:Campaign)) as campaign_count,
+               size((m)-[:EXPLOITS]->(:Vulnerability)) as vulnerability_count,
+               size((m)-[:USES]->(:Technique)) as technique_count
         LIMIT 3
         """
 
@@ -1264,21 +1243,17 @@ async def get_campaign_details(campaign_name: str, ctx: Context) -> str:
     try:
         logger.info(f"Getting campaign details from graph: {campaign_name}")
 
-        # Query graph database directly for campaign
+        # Query graph database directly for campaign (optimized with size() functions)
         query = f"""
         MATCH (c:Campaign)
         WHERE toLower(c.name) CONTAINS '{campaign_name.lower()}' 
            OR ANY(alias IN c.aliases WHERE toLower(alias) CONTAINS '{campaign_name.lower()}')
-        OPTIONAL MATCH (c)<-[:ATTRIBUTED_TO]-(ta:ThreatActor)
-        OPTIONAL MATCH (c)<-[:USED_IN]-(m:Malware)
-        OPTIONAL MATCH (c)-[:TARGETS]->(s:Sector)
-        OPTIONAL MATCH (c)-[:USES]->(t:Technique)
         RETURN c.name as name, c.aliases as aliases, c.description as description,
                c.objective as objective, c.first_seen as first_seen, c.last_seen as last_seen,
-               collect(DISTINCT ta.name)[..5] as actors,
-               collect(DISTINCT m.name)[..5] as malware,
-               collect(DISTINCT s.name)[..5] as targets,
-               collect(DISTINCT t.name)[..5] as techniques
+               size((:ThreatActor)-[:ATTRIBUTED_TO]->(c)) as actor_count,
+               size((:Malware)-[:USED_IN]->(c)) as malware_count,
+               size((c)-[:TARGETS]->(:Sector)) as target_count,
+               size((c)-[:USES]->(:Technique)) as technique_count
         LIMIT 3
         """
 
