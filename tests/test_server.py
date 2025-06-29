@@ -30,8 +30,8 @@ async def test_umbrix_client_initialization():
 
 
 @pytest.mark.asyncio
-async def test_search_threats_tool():
-    """Test search_threats tool with proper parameters and response format"""
+async def test_indicator_correlation_tool():
+    """Test indicator_correlation tool with proper parameters and response format"""
     with patch("umbrix_mcp.server.umbrix_client") as mock_client:
         mock_client.base_url = "https://test.api.com"
         mock_http_client = AsyncMock()
@@ -40,31 +40,50 @@ async def test_search_threats_tool():
             {
                 "status": "success",
                 "data": {
-                    "results": "APT28 - Russian cyber espionage group\nFancy Bear - Alias for APT28",
-                    "count": 2,
+                    "correlations": [
+                        {
+                            "correlation_type": "infrastructure",
+                            "confidence": 0.85,
+                            "description": "🔄 Infrastructure Overlap: Shared hosting on ASN-1234",
+                        },
+                        {
+                            "correlation_type": "temporal",
+                            "confidence": 0.72,
+                            "description": "⏰ Temporal Analysis: Similar activity timeframes",
+                        },
+                    ],
+                    "analysis": {
+                        "total_correlations": 2,
+                        "strongest_correlation": "infrastructure",
+                    },
                 },
             }
         )
 
-        from umbrix_mcp.server import search_threats
+        from umbrix_mcp.server import indicator_correlation
         from mcp.server.fastmcp import Context
 
-        result = await search_threats("APT28", Context(), limit=10)
+        result = await indicator_correlation(
+            ["192.168.1.1", "malicious.com"], Context()
+        )
 
-        # Verify HTTP client was called (multiple calls are expected for search_threats)
-        assert mock_http_client.post.call_count >= 1
-
-        # Verify at least one call was made to execute_graph_query
-        calls = mock_http_client.post.call_args_list
-        assert any(
-            call[0][0].endswith("/v1/tools/execute_graph_query") for call in calls
-        ), "Expected at least one call to execute_graph_query endpoint"
+        # Verify HTTP client was called once for indicator_correlation
+        mock_http_client.post.assert_called_once_with(
+            f"{mock_client.base_url}/v1/tools/threat_correlation",
+            json={
+                "indicators": ["192.168.1.1", "malicious.com"],
+            },
+        )
 
         # Verify response contains expected content
         assert isinstance(result, str)
         assert len(result) > 0
-        # Should contain some relevant threat intelligence data
-        assert "APT28" in result or "Russian" in result or "Fancy Bear" in result
+        # Should contain correlation analysis data
+        assert "🔗 Threat Correlation Analysis" in result
+        assert "Analyzed 2 indicators: 192.168.1.1, malicious.com" in result
+        assert "Found 2 correlations:" in result
+        assert "Infrastructure Correlation" in result
+        assert "Confidence:" in result
 
 
 @pytest.mark.asyncio
@@ -543,10 +562,12 @@ async def test_threat_correlation_tool():
             }
         )
 
-        from umbrix_mcp.server import threat_correlation
+        from umbrix_mcp.server import indicator_correlation
         from mcp.server.fastmcp import Context
 
-        result = await threat_correlation(["192.168.1.1", "malicious.com"], Context())
+        result = await indicator_correlation(
+            ["192.168.1.1", "malicious.com"], Context()
+        )
 
         mock_http_client.post.assert_called_once_with(
             f"{mock_client.base_url}/v1/tools/threat_correlation",
@@ -559,6 +580,39 @@ async def test_threat_correlation_tool():
         assert "Analyzed 2 indicators: 192.168.1.1, malicious.com" in result
         assert "Found 2 correlations:" in result
         assert "Confidence:" in result
+
+
+@pytest.mark.asyncio
+async def test_threat_correlation_tool():
+    """Test threat_correlation tool with proper parameters and response format"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "success",
+                "data": {
+                    "result": "APT28 - Russian cyber espionage group\nFancy Bear - Alias for APT28",
+                },
+            }
+        )
+
+        from umbrix_mcp.server import threat_correlation
+        from mcp.server.fastmcp import Context
+
+        result = await threat_correlation("APT28", Context(), limit=10)
+
+        mock_http_client.post.assert_called_once_with(
+            f"{mock_client.base_url}/v1/tools/threat_correlation",
+            json={
+                "query": "APT28",
+                "limit": 10,
+            },
+        )
+
+        assert isinstance(result, str)
+        assert "APT28" in result or "Russian cyber espionage" in result
 
 
 @pytest.mark.asyncio
@@ -974,19 +1028,19 @@ async def test_tool_error_handling():
             }
         )
 
-        from umbrix_mcp.server import search_threats
+        from umbrix_mcp.server import threat_correlation
         from mcp.server.fastmcp import Context
 
-        result = await search_threats("test query", Context())
+        result = await threat_correlation("test query", Context())
 
         # Verify HTTP client was called (multiple calls are possible)
         assert mock_http_client.post.call_count >= 1
 
-        # Verify at least one call was made to execute_graph_query
+        # Verify at least one call was made to threat_correlation
         calls = mock_http_client.post.call_args_list
         assert any(
-            call[0][0].endswith("/v1/tools/execute_graph_query") for call in calls
-        ), "Expected at least one call to execute_graph_query endpoint"
+            call[0][0].endswith("/v1/tools/threat_correlation") for call in calls
+        ), "Expected at least one call to threat_correlation endpoint"
 
         # Verify error is handled appropriately
         assert isinstance(result, str)
@@ -1011,10 +1065,10 @@ async def test_http_exception_handling():
 
         mock_http_client.post.side_effect = httpx.ConnectTimeout("Connection timeout")
 
-        from umbrix_mcp.server import search_threats
+        from umbrix_mcp.server import threat_correlation
         from mcp.server.fastmcp import Context
 
-        result = await search_threats("test query", Context())
+        result = await threat_correlation("test query", Context())
 
         # Verify HTTP client was called (multiple calls are possible)
         assert mock_http_client.post.call_count >= 1
@@ -1033,14 +1087,14 @@ async def test_http_exception_handling():
 async def test_parameter_validation():
     """Test parameter validation for various tools"""
     from umbrix_mcp.server import (
-        search_threats,
+        threat_correlation,
         analyze_indicator,
     )
     from mcp.server.fastmcp import Context
 
     # Test empty query parameter
     with patch("umbrix_mcp.server.umbrix_client"):
-        result = await search_threats("", Context())
+        result = await threat_correlation("", Context())
         # Should handle empty query gracefully
         assert isinstance(result, str)
 
@@ -1235,7 +1289,9 @@ async def test_find_vulnerabilities_tool():
         assert "📊 CVSS Score: 10.0" in result
         assert "🎯 Recent Exploitation: 25 references" in result
         assert "2. CVE-2023-23397" in result
-        assert "💡 For detailed vulnerability analysis, use search_threats" in result
+        assert (
+            "💡 For detailed vulnerability analysis, use threat_correlation" in result
+        )
 
 
 @pytest.mark.asyncio
@@ -1371,7 +1427,7 @@ async def test_response_format_consistency():
         )
 
         from umbrix_mcp.server import (
-            search_threats,
+            threat_correlation,
             analyze_indicator,
             get_threat_actor,
             execute_graph_query,
@@ -1385,7 +1441,7 @@ async def test_response_format_consistency():
 
         # Test that all tools return strings
         tools_to_test = [
-            (search_threats, ("test", context)),
+            (threat_correlation, ("test", context)),
             (analyze_indicator, ("test.com", context)),
             (get_threat_actor, ("APT28", context)),
             (execute_graph_query, ("MATCH (n) RETURN n LIMIT 1", context)),

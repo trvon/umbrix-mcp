@@ -15,7 +15,7 @@ def test_import_server():
 
     # Test that all expected tools are available
     expected_tools = [
-        "search_threats",
+        "threat_correlation",
         "analyze_indicator",
         "get_threat_actor",
         "execute_graph_query",
@@ -24,7 +24,6 @@ def test_import_server():
         "get_campaign_details",
         "get_attack_pattern_details",
         "get_vulnerability_details",
-        "threat_correlation",
         "indicator_reputation",
         "threat_actor_attribution",
         "ioc_validation",
@@ -189,10 +188,14 @@ def test_module_structure():
 def test_tool_function_signatures():
     """Test that tool functions have expected signatures"""
     import inspect
-    from umbrix_mcp.server import search_threats, analyze_indicator, get_threat_actor
+    from umbrix_mcp.server import (
+        threat_correlation,
+        analyze_indicator,
+        get_threat_actor,
+    )
 
-    # Test search_threats signature
-    sig = inspect.signature(search_threats)
+    # Test threat_correlation signature
+    sig = inspect.signature(threat_correlation)
     params = list(sig.parameters.keys())
     assert "query" in params
     assert "ctx" in params
@@ -226,7 +229,7 @@ def test_async_functions():
     """Test that tool functions are properly declared as async"""
     import inspect
     from umbrix_mcp.server import (
-        search_threats,
+        threat_correlation,
         analyze_indicator,
         get_threat_actor,
         execute_graph_query,
@@ -234,7 +237,7 @@ def test_async_functions():
     )
 
     # All tool functions should be async
-    assert inspect.iscoroutinefunction(search_threats)
+    assert inspect.iscoroutinefunction(threat_correlation)
     assert inspect.iscoroutinefunction(analyze_indicator)
     assert inspect.iscoroutinefunction(get_threat_actor)
     assert inspect.iscoroutinefunction(execute_graph_query)
@@ -260,10 +263,10 @@ def test_integration_mock_server():
             }
             mock_http_client.post.return_value = mock_response
 
-            from umbrix_mcp.server import search_threats
+            from umbrix_mcp.server import threat_correlation
             from mcp.server.fastmcp import Context
 
-            result = await search_threats("integration test", Context())
+            result = await threat_correlation("integration test", Context())
 
             # Should get a string response
             assert isinstance(result, str)
@@ -308,7 +311,7 @@ def test_error_handling_imports():
 async def test_tool_integration():
     """Test integration between multiple tools"""
     from unittest.mock import patch, AsyncMock
-    from umbrix_mcp.server import search_threats, analyze_indicator
+    from umbrix_mcp.server import threat_correlation, analyze_indicator
     from mcp.server.fastmcp import Context
 
     with patch("umbrix_mcp.server.umbrix_client") as mock_client:
@@ -327,7 +330,7 @@ async def test_tool_integration():
 
         # Test multiple tool calls
         context = Context()
-        result1 = await search_threats("APT28", context)
+        result1 = await threat_correlation("APT28", context)
         result2 = await analyze_indicator("malicious.com", context)
 
         # Both should succeed
@@ -343,7 +346,11 @@ async def test_concurrent_tool_calls():
     """Test concurrent execution of multiple tools"""
     import asyncio
     from unittest.mock import patch, AsyncMock
-    from umbrix_mcp.server import search_threats, get_threat_actor, analyze_indicator
+    from umbrix_mcp.server import (
+        threat_correlation,
+        get_threat_actor,
+        analyze_indicator,
+    )
     from mcp.server.fastmcp import Context
 
     with patch("umbrix_mcp.server.umbrix_client") as mock_client:
@@ -367,7 +374,7 @@ async def test_concurrent_tool_calls():
         # Run multiple tools concurrently
         context = Context()
         tasks = [
-            search_threats("APT28", context),
+            threat_correlation("APT28", context),
             get_threat_actor("APT28", context),
             analyze_indicator("malicious.com", context),
         ]

@@ -140,7 +140,7 @@ async def discover_recent_threats(ctx: Context, days_back: int = 30) -> str:
             f"Discovering recent threats for the last {days_back} days via enhanced LLM tool"
         )
 
-        # Use the enhanced discover_recent_threats LLM tool instead of hardcoded queries
+        # Use the backend discover_recent_threats tool
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/discover_recent_threats",
             json={"days_back": days_back},
@@ -196,7 +196,7 @@ async def discover_recent_threats(ctx: Context, days_back: int = 30) -> str:
 
 
 @mcp.tool()
-async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
+async def threat_correlation(query: str, ctx: Context, limit: int = 10) -> str:
     """Search for threat intelligence using direct graph queries to prevent hallucination
 
     This tool searches the graph database directly using multiple strategies:
@@ -213,35 +213,24 @@ async def search_threats(query: str, ctx: Context, limit: int = 10) -> str:
         limit: Maximum number of results to return (default: 10, max: 50)
     """
     try:
-        logger.info(f"Graph-based threat search: {query}")
+        logger.info(f"Using backend threat_correlation tool: {query}")
 
-        # First, try to extract specific entities from the query
-        entities = await _extract_entities_from_question(query)
+        # Call the backend threat_correlation tool directly
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/threat_correlation",
+            json={"query": query, "limit": limit},
+        )
+        response.raise_for_status()
+        result = response.json()
 
-        if entities:
-            # Use graph traversal to get actual data
-            graph_data = await _get_graph_traversal_data(entities, query)
-            if graph_data:
-                return await _validate_and_enrich_links(graph_data)
-
-        # Try pattern-based queries for common search types
-        pattern_results = await _get_search_pattern_results(query, limit)
-        if pattern_results:
-            return await _validate_and_enrich_links(pattern_results)
-
-        # Try direct keyword matching in graph
-        keyword_results = await _try_keyword_search(query, limit)
-        if keyword_results:
-            validated_results = (
-                f"Graph Search Results for '{query}':\n\n{keyword_results}"
+        if result.get("status") == "success":
+            return result.get("data", {}).get(
+                "result", "No threat correlation data found."
             )
-            validated_results += "\n\n💡 All data sourced directly from graph database."
-            return await _validate_and_enrich_links(validated_results)
-
-        # No results found - provide helpful guidance
-        suggestions = _generate_search_suggestions(query)
-        basic_stats = await _get_basic_database_stats()
-        return f"No verified graph data found for '{query}'.\n\n{suggestions}\n\nDatabase Status: {basic_stats}"
+        else:
+            return (
+                f"Error in threat correlation: {result.get('error', 'Unknown error')}"
+            )
 
     except Exception as e:
         logger.error(f"Error in graph-based threat search: {e}")
@@ -1483,7 +1472,7 @@ async def get_vulnerability_details(vulnerability_id: str, ctx: Context) -> str:
 
 
 @mcp.tool()
-async def threat_correlation(
+async def indicator_correlation(
     indicators: list[str], ctx: Context, correlation_types: list[str] = None
 ) -> str:
     """Find correlations between threat indicators
@@ -2456,7 +2445,7 @@ async def find_vulnerabilities(
                 except Exception:
                     summary += results
 
-                summary += "\n💡 For detailed vulnerability analysis, use search_threats with specific CVE IDs."
+                summary += "\n💡 For detailed vulnerability analysis, use threat_correlation with specific CVE IDs."
                 return summary
             else:
                 # Try fallback query without activity filter
@@ -2486,7 +2475,7 @@ async def find_vulnerabilities(
                             if severity_levels
                             else ""
                         )
-                        return f"🚨 Known Vulnerabilities{severity_str} (no recent exploitation in {days_back} days)\n\nFound {fallback_count} vulnerabilities:\n\n{fallback_results}\n\n💡 Use search_threats with CVE IDs for more details."
+                        return f"🚨 Known Vulnerabilities{severity_str} (no recent exploitation in {days_back} days)\n\nFound {fallback_count} vulnerabilities:\n\n{fallback_results}\n\n💡 Use threat_correlation with CVE IDs for more details."
 
                 return f"No vulnerabilities found{' with specified severity levels' if severity_levels else ''} in the database."
         else:
