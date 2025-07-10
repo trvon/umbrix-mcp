@@ -8,7 +8,6 @@ TOOL SELECTION GUIDE FOR LLMs:
 
 🔍 DISCOVERY & EXPLORATION (VERIFIED GRAPH DATA):
 - discover_recent_threats: Start here! Shows latest activity and data overview
-- search_threats: Find specific threats, actors, malware using direct graph queries
 - system_health_check: Verify platform status when other tools fail
 
 💬 ANALYSIS & INTELLIGENCE (VERIFIED GRAPH DATA):
@@ -1882,6 +1881,51 @@ async def network_analysis(network: str, ctx: Context) -> str:
 
 
 @mcp.tool()
+async def timeline_analysis(
+    entity: str, start_date: str, end_date: str, ctx: Context
+) -> str:
+    """Analyze the timeline of events for a threat entity
+
+    Args:
+        entity: The threat entity to analyze (e.g., APT28, malicious.com)
+        start_date: Start date for the timeline (YYYY-MM-DD)
+        end_date: End date for the timeline (YYYY-MM-DD)
+    """
+    try:
+        logger.info(f"Analyzing timeline for {entity} from {start_date} to {end_date}")
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/timeline_analysis",
+            json={"entities": [entity], "start_date": start_date, "end_date": end_date},
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("status") == "success":
+            data = result.get("data", {})
+            timeline = data.get("timeline", [])
+            summary = data.get("summary", "")
+
+            output = f"Timeline Analysis for: {entity}\n\n"
+            if timeline:
+                for event in timeline:
+                    output += f"[{event.get('timestamp', '')}] ({event.get('type', '')}) {event.get('event', '')}\n"
+            else:
+                output += (
+                    "No timeline data found for the specified entity and timeframe.\n"
+                )
+
+            if summary:
+                output += f"\nSummary: {summary}\n"
+
+            return output
+        else:
+            return f"Error: {result.get('error', 'Timeline analysis failed')}"
+    except Exception as e:
+        logger.error(f"Error in timeline analysis: {e}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
 async def find_recent_indicators(
     ctx: Context,
     days_back: int = 30,
@@ -2001,109 +2045,6 @@ async def find_recent_indicators(
 
     except Exception as e:
         logger.error(f"Error finding recent indicators: {e}")
-        return f"Error: {str(e)}"
-
-
-@mcp.tool()
-async def timeline_analysis(
-    entities: list[str],
-    ctx: Context,
-    time_range: dict = None,
-    analysis_types: list[str] = None,
-    max_events: int = 100,
-) -> str:
-    """Analyze threat activity over a time period
-
-    Args:
-        entities: List of entities to analyze (indicators, campaigns, threat actors, etc.)
-        time_range: Time range with start_date and end_date in ISO 8601 format (optional, defaults to last 30 days)
-        analysis_types: Types of analysis to perform (optional, defaults to ["indicator_timeline", "campaign_progression"])
-        max_events: Maximum number of events to analyze (default: 100)
-    """
-    try:
-        logger.info(f"Analyzing timeline for entities: {entities}")
-
-        # Prepare request payload
-        payload = {"entities": entities, "max_events": max_events}
-
-        if time_range:
-            payload["time_range"] = time_range
-
-        if analysis_types:
-            payload["analysis_types"] = analysis_types
-        else:
-            payload["analysis_types"] = ["indicator_timeline", "campaign_progression"]
-
-        response = await umbrix_client.client.post(
-            f"{umbrix_client.base_url}/v1/tools/timeline_analysis",
-            json=payload,
-        )
-        response.raise_for_status()
-        result = response.json()
-
-        if result.get("status") == "success":
-            data = result.get("data", {})
-            timeline = data.get("timeline", [])
-            patterns = data.get("patterns", [])
-            data.get("correlations", [])
-            statistics = data.get("statistics", {})
-            insights = data.get("insights", [])
-
-            # Format time range for display
-            time_display = "Last 30 days"
-            if time_range:
-                start = time_range.get("start_date", "")[:10]  # Extract date part
-                end = time_range.get("end_date", "")[:10]
-                time_display = f"{start} to {end}"
-
-            summary = f"Timeline Analysis: {', '.join(entities[:3])}{'...' if len(entities) > 3 else ''}\n"
-            summary += f"Time Range: {time_display}\n\n"
-
-            # Statistics
-            if statistics:
-                summary += "Statistics:\n"
-                if statistics.get("total_events"):
-                    summary += f"  Total Events: {statistics['total_events']}\n"
-                if statistics.get("time_span"):
-                    summary += f"  Time Span: {statistics['time_span']}\n"
-                if statistics.get("most_active_period"):
-                    summary += (
-                        f"  Most Active Period: {statistics['most_active_period']}\n"
-                    )
-                summary += "\n"
-
-            # Key timeline events
-            if timeline:
-                summary += f"Timeline Events (showing {min(len(timeline), 10)} of {len(timeline)}):\n"
-                for event in timeline[:10]:
-                    summary += f"• {event.get('timestamp', '')[:10]} - {event.get('description', '')}\n"
-                    if event.get("severity"):
-                        summary += f"  Severity: {event.get('severity')}\n"
-                summary += "\n"
-
-            # Patterns
-            if patterns:
-                summary += f"Temporal Patterns ({len(patterns)}):\n"
-                for pattern in patterns[:3]:
-                    summary += f"• {pattern.get('pattern_type', '')}: {pattern.get('description', '')}\n"
-                if len(patterns) > 3:
-                    summary += f"  ... and {len(patterns) - 3} more patterns\n"
-                summary += "\n"
-
-            # Key insights
-            if insights:
-                summary += f"Key Insights ({len(insights)}):\n"
-                for insight in insights[:3]:
-                    summary += f"• {insight.get('title', '')}\n"
-                    summary += f"  {insight.get('description', '')}\n"
-                if len(insights) > 3:
-                    summary += f"  ... and {len(insights) - 3} more insights\n"
-
-            return summary
-        else:
-            return f"Error: {result.get('error', 'Timeline analysis failed')}"
-    except Exception as e:
-        logger.error(f"Error in timeline analysis: {e}")
         return f"Error: {str(e)}"
 
 
@@ -2233,7 +2174,7 @@ async def report_generation(
 
 
 @mcp.tool()
-async def system_health_check(ctx: Context) -> str:
+async def system_health(ctx: Context) -> str:
     """Check system health and verify threat intelligence platform status
 
     Provides comprehensive system status including:
@@ -2324,142 +2265,6 @@ async def system_health_check(ctx: Context) -> str:
             return f"Error: {result.get('error', 'Health check failed')}"
     except Exception as e:
         logger.error(f"Error checking system health: {e}")
-        return f"Error: {str(e)}"
-
-
-@mcp.tool()
-async def find_vulnerabilities(
-    ctx: Context,
-    severity_levels: list[str] = None,
-    days_back: int = 90,
-    limit: int = 15,
-) -> str:
-    """Find known vulnerabilities and CVEs in the threat intelligence database
-
-    This tool finds vulnerabilities that threat actors are exploiting or targeting.
-    Perfect for "what vulnerabilities are being exploited?" or "show me recent CVEs"
-
-    Args:
-        severity_levels: Filter by severity (e.g., ['critical', 'high']) (optional)
-        days_back: Number of days to look back for recent activity (default: 90)
-        limit: Maximum number of vulnerabilities to return (default: 15)
-    """
-    try:
-        logger.info(f"Finding vulnerabilities from the last {days_back} days")
-
-        # Build severity filter if specified
-        severity_filter = ""
-        if severity_levels and len(severity_levels) > 0:
-            severity_list = "', '".join([s.lower() for s in severity_levels])
-            severity_filter = f"AND toLower(v.severity) IN ['{severity_list}']"
-
-        # Use direct Cypher query to find vulnerabilities
-        vulnerabilities_query = f"""
-        MATCH (v:Vulnerability)
-        OPTIONAL MATCH (v)-[:EXPLOITS|TARGETS]-(related)
-        WHERE (related.last_seen IS NOT NULL 
-               AND datetime(related.last_seen) >= datetime() - duration({{days: {days_back}}})
-              ) OR v.published_date IS NOT NULL
-        {severity_filter}
-        WITH v, count(related) as recent_activity
-        RETURN v.cve_id, v.name, v.severity, v.cvss_score, v.description, recent_activity
-        ORDER BY recent_activity DESC, v.cvss_score DESC, v.cve_id DESC
-        LIMIT {limit}
-        """
-
-        response = await umbrix_client.client.post(
-            f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
-            json={"cypher_query": vulnerabilities_query},
-        )
-        response.raise_for_status()
-        result = response.json()
-
-        if result.get("status") == "success":
-            data = result.get("data", {})
-            results = data.get("results", "")
-            count = data.get("count", 0)
-
-            if count > 0:
-                severity_str = (
-                    f" ({', '.join(severity_levels)})" if severity_levels else ""
-                )
-                summary = f"🚨 Vulnerabilities{severity_str} (Last {days_back} Days)\n"
-                summary += (
-                    f"Found {count} vulnerabilities with activity or high impact:\n\n"
-                )
-
-                # Parse the results
-                import json as json_mod
-
-                try:
-                    if results.startswith("[") and results.endswith("]"):
-                        vulns = json_mod.loads(results)
-                        for i, vuln in enumerate(vulns, 1):
-                            cve_id = vuln.get("v.cve_id", "Unknown")
-                            name = vuln.get("v.name", "")
-                            severity = vuln.get("v.severity", "")
-                            cvss_score = vuln.get("v.cvss_score", "")
-                            description = vuln.get("v.description", "")
-                            activity = vuln.get("recent_activity", 0)
-
-                            summary += f"{i}. {cve_id}\n"
-                            if name and name.strip():
-                                summary += f"   📝 Name: {name}\n"
-                            if severity:
-                                summary += f"   ⚠️  Severity: {severity.upper()}\n"
-                            if cvss_score:
-                                summary += f"   📊 CVSS Score: {cvss_score}\n"
-                            if activity > 0:
-                                summary += f"   🎯 Recent Exploitation: {activity} references\n"
-                            if description and len(description) < 150:
-                                summary += f"   📄 {description[:147]}...\n"
-                            summary += "\n"
-                    else:
-                        summary += results
-
-                except Exception:
-                    summary += results
-
-                summary += "\n💡 For detailed vulnerability analysis, use threat_correlation with specific CVE IDs."
-                return summary
-            else:
-                # Try fallback query without activity filter
-                fallback_query = f"""
-                MATCH (v:Vulnerability)
-                WHERE 1=1 {severity_filter}
-                RETURN v.cve_id, v.name, v.severity, v.cvss_score
-                ORDER BY v.cvss_score DESC, v.cve_id DESC
-                LIMIT {limit}
-                """
-
-                response = await umbrix_client.client.post(
-                    f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
-                    json={"cypher_query": fallback_query},
-                )
-                response.raise_for_status()
-                fallback_result = response.json()
-
-                if fallback_result.get("status") == "success":
-                    fallback_data = fallback_result.get("data", {})
-                    fallback_results = fallback_data.get("results", "")
-                    fallback_count = fallback_data.get("count", 0)
-
-                    if fallback_count > 0:
-                        severity_str = (
-                            f" with {', '.join(severity_levels)} severity"
-                            if severity_levels
-                            else ""
-                        )
-                        return f"🚨 Known Vulnerabilities{severity_str} (no recent exploitation in {days_back} days)\n\nFound {fallback_count} vulnerabilities:\n\n{fallback_results}\n\n💡 Use threat_correlation with CVE IDs for more details."
-
-                return f"No vulnerabilities found{' with specified severity levels' if severity_levels else ''} in the database."
-        else:
-            return (
-                f"Error finding vulnerabilities: {result.get('error', 'Unknown error')}"
-            )
-
-    except Exception as e:
-        logger.error(f"Error finding vulnerabilities: {e}")
         return f"Error: {str(e)}"
 
 
