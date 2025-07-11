@@ -374,6 +374,57 @@ async def test_tool_error_handling():
 
 
 @pytest.mark.asyncio
+async def test_get_cve_details_tool():
+    """Test get_cve_details tool with proper parameters and response format"""
+    with patch("umbrix_mcp.server.umbrix_client") as mock_client:
+        mock_client.base_url = "https://test.api.com"
+        mock_http_client = AsyncMock()
+        mock_client.client = mock_http_client
+        mock_http_client.post.return_value = create_mock_response(
+            {
+                "status": "success",
+                "data": {
+                    "description": "Critical vulnerability in web application framework",
+                    "severity": "CRITICAL",
+                    "cvss_score": 9.8,
+                    "published_date": "2024-04-15",
+                    "last_modified": "2024-04-20",
+                    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                    "affected_products": ["Framework v1.0-v2.5"],
+                    "associated_threat_actors": ["APT28", "Lazarus Group"],
+                    "references": ["https://nvd.nist.gov/vuln/detail/CVE-2024-3721"],
+                    "exploitation_status": "Exploited in Wild",
+                },
+            }
+        )
+
+        from umbrix_mcp.server import get_cve_details
+        from mcp.server.fastmcp import Context
+
+        result = await get_cve_details("CVE-2024-3721", Context())
+
+        # Verify HTTP client was called
+        assert mock_http_client.post.call_count >= 1
+
+        # Verify at least one call was made to get_cve_details endpoint
+        calls = mock_http_client.post.call_args_list
+        assert any(
+            call[0][0].endswith("/v1/tools/get_cve_details") for call in calls
+        ), "Expected at least one call to get_cve_details endpoint"
+
+        # Verify response contains expected content
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # Should contain CVE information
+        assert "CVE-2024-3721" in result
+        assert (
+            "Critical vulnerability" in result
+            or "CRITICAL" in result
+            or "9.8" in result
+        )
+
+
+@pytest.mark.asyncio
 async def test_response_format_consistency():
     """Test that all tools return consistent string responses"""
     with patch("umbrix_mcp.server.umbrix_client") as mock_client:
@@ -391,6 +442,7 @@ async def test_response_format_consistency():
             execute_graph_query,
             threat_intel_chat,
             system_health,
+            get_cve_details,
         )
         from mcp.server.fastmcp import Context
 
@@ -404,6 +456,7 @@ async def test_response_format_consistency():
             (execute_graph_query, ("MATCH (n) RETURN n LIMIT 1", context)),
             (threat_intel_chat, ("test question", context)),
             (system_health, (context,)),
+            (get_cve_details, ("CVE-2024-1234", context)),
         ]
 
         for tool_func, args in tools_to_test:

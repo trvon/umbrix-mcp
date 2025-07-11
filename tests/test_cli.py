@@ -31,7 +31,8 @@ def test_import_server():
         "timeline_analysis",
         "threat_hunting_query_builder",
         "report_generation",
-        "system_health_check",
+        "system_health",
+        "get_cve_details",
     ]
 
     for tool_name in expected_tools:

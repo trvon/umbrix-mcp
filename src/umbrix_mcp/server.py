@@ -16,6 +16,7 @@ TOOL SELECTION GUIDE FOR LLMs:
 - get_threat_actor: Detailed profiles from verified graph relationships
 - get_malware_details: Comprehensive malware analysis from graph database
 - get_campaign_details: In-depth campaign intelligence from verified data
+- get_cve_details: Comprehensive CVE analysis with severity and exploitation status
 
 🔧 ADVANCED QUERIES (DIRECT GRAPH ACCESS):
 - execute_graph_query: Direct Cypher queries for custom analysis
@@ -1443,6 +1444,114 @@ async def get_vulnerability_details(vulnerability_id: str, ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error getting vulnerability details: {e}")
         return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def get_cve_details(cve_id: str, ctx: Context) -> str:
+    """Get detailed information about a specific CVE (Common Vulnerabilities and Exposures)
+
+    Args:
+        cve_id: The CVE identifier (e.g., CVE-2024-3721, CVE-2021-44228)
+
+    Returns comprehensive CVE information including:
+    - Description and severity details
+    - CVSS scores and impact metrics
+    - Affected products and vendors
+    - Exploitation status and threat actors
+    - Associated malware and campaigns
+    - References and remediation guidance
+    """
+    try:
+        logger.info(f"Getting CVE details: {cve_id}")
+
+        # Ensure CVE ID is properly formatted
+        cve_id = cve_id.upper()
+        if not cve_id.startswith("CVE-"):
+            cve_id = f"CVE-{cve_id}"
+
+        response = await umbrix_client.client.post(
+            f"{umbrix_client.base_url}/v1/tools/get_cve_details",
+            json={"cve_id": cve_id},
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("status") == "success":
+            data = result.get("data", {})
+
+            summary = f"🔒 CVE Analysis: {cve_id}\n"
+            summary += "=" * 50 + "\n\n"
+
+            # Basic information
+            if data.get("description"):
+                summary += f"📄 Description:\n{data['description']}\n\n"
+
+            # Severity information
+            if data.get("severity"):
+                severity = data["severity"].upper()
+                severity_emoji = {
+                    "CRITICAL": "🔴",
+                    "HIGH": "🟠",
+                    "MEDIUM": "🟡",
+                    "LOW": "🟢",
+                }.get(severity, "⚪")
+                summary += f"{severity_emoji} Severity: {severity}\n"
+
+            if data.get("cvss_score"):
+                summary += f"📊 CVSS Score: {data['cvss_score']}"
+                if data.get("cvss_vector"):
+                    summary += f" ({data['cvss_vector']})"
+                summary += "\n\n"
+
+            # Affected products
+            if data.get("affected_products"):
+                summary += f"🎯 Affected Products ({len(data['affected_products'])}):\n"
+                for product in data["affected_products"][:10]:
+                    summary += f"  • {product}\n"
+                if len(data["affected_products"]) > 10:
+                    summary += f"  ... and {len(data['affected_products']) - 10} more\n"
+                summary += "\n"
+
+            # Exploitation status
+            if data.get("exploitation_status"):
+                summary += f"⚠️ Exploitation Status: {data['exploitation_status']}\n\n"
+
+            # Threat actors
+            if data.get("associated_threat_actors"):
+                summary += f"👥 Associated Threat Actors ({len(data['associated_threat_actors'])}):\n"
+                for actor in data["associated_threat_actors"][:5]:
+                    summary += f"  • {actor}\n"
+                summary += "\n"
+
+            # Malware
+            if data.get("associated_malware"):
+                summary += (
+                    f"🦠 Associated Malware ({len(data['associated_malware'])}):\n"
+                )
+                for malware in data["associated_malware"][:5]:
+                    summary += f"  • {malware}\n"
+                summary += "\n"
+
+            # Dates
+            if data.get("published_date"):
+                summary += f"📅 Published: {data['published_date']}\n"
+            if data.get("last_modified"):
+                summary += f"🔄 Last Modified: {data['last_modified']}\n"
+
+            # References
+            if data.get("references"):
+                summary += f"\n📚 References ({len(data['references'])}):\n"
+                for ref in data["references"][:5]:
+                    summary += f"  • {ref}\n"
+
+            return summary
+        else:
+            error_msg = result.get("message", result.get("error", "CVE not found"))
+            return f"❌ {error_msg}"
+
+    except Exception as e:
+        logger.error(f"Error getting CVE details: {e}")
+        return f"Error getting CVE details: {str(e)}"
 
 
 @mcp.tool()
