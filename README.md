@@ -1,6 +1,6 @@
 # Umbrix MCP Server
 
-Connect your AI assistant directly to live threat intelligence with 18 specialized MCP tools for comprehensive threat analysis.
+Connect your AI assistant directly to live threat intelligence with **smart MCP tools** optimized for both large and small AI models.
 
 ## 🚀 Quick Start
 
@@ -67,38 +67,54 @@ If using pip install instead of Docker:
 }
 ```
 
-##  Available Tools
+## 🤖 Smart MCP Tools
 
-> **Note**: The umbrix-mcp client provides 18 tools that interface with Umbrix's threat intelligence platform. The backend MCP server has 18 core tools, while this client adds additional convenience tools for easier interaction.
+**Optimized for all AI model sizes** - from GPT-4 to smaller local models.
 
-### Discovery & Search (4 tools - client only)
+### 🎯 Tool Selection Assistant (Perfect for Smaller Models)
+- **get_tool_recommendation** - 🆕 Describe what you want to research → Get personalized tool suggestions
+  - Example: `get_tool_recommendation("I want to research APT29")` → Suggests best tools for that task
+
+### 🔍 Discovery & Exploration (Great Starting Points)
 - **discover_recent_threats** - Start here! Shows latest activity and data overview
-- **find_threat_actors** - Find active threat actors with recent activity
-- **find_recent_indicators** - Find latest IOCs by type and timeframe
-- **find_vulnerabilities** - Find exploited CVEs and vulnerabilities
+- **threat_correlation** - Search for any threat entities with simple terms
+- **analyze_indicator** - Deep analysis of specific IOCs (IPs, domains, hashes)
 
-### Core Intelligence Analysis (3 tools)
-- **analyze_indicator** - Analyze IPs, domains, hashes, URLs with full context
-- **get_threat_actor** - Get detailed threat actor profiles and attribution
+### 💬 Natural Language Queries (Enhanced for Small Models)
+- **execute_graph_query** - 🚀 **ENHANCED** Smart tool that converts simple patterns to database queries
+  - **New patterns**: `"recent threats"`, `"APT29"`, `"192.168.1.1"`, `"ransomware campaigns"`
+  - **Still supports**: Advanced Cypher queries for expert users
 - **threat_intel_chat** - Natural language Q&A about threats with graph context
 
-### Graph Query (2 tools)
-- **execute_graph_query** - Run Cypher queries against the threat intelligence graph
-- **intelligent_graph_query** - Natural language to Cypher query translation
+### 🎯 Specific Entity Lookups
+- **get_threat_actor** - Detailed threat actor profiles and attribution
+- **get_malware_details** - Comprehensive malware analysis from graph database
+- **get_campaign_details** - In-depth campaign intelligence from verified data
+- **get_cve_details** - Comprehensive CVE analysis with severity and exploitation status
 
-### Threat Hunting & Reporting (4 tools)
-- **threat_hunting_query_builder** - Generate threat hunting queries
-- **report_generation** - Generate threat intelligence reports
-- **system_health** - Check system component health and metrics
-- **ioc_validation** - Validate and enrich indicators of compromise
+### 📊 Advanced Analysis
+- **timeline_analysis** - Temporal patterns and activity analysis
+- **indicator_reputation** - Reputation scoring for IOCs
+- **network_analysis** - Analyze IP ranges and networks
+- **threat_actor_attribution** - Attribute indicators to actors
+- **ioc_validation** - Validate and enrich indicators
 
-### Feed Management (3 tools)
-- **feed_status** - Check the status and health of threat intelligence feeds
-- **feed_reputation** - Analyze and rank threat intelligence feeds by reputation
-- **feed_metrics** - Get detailed performance metrics for threat intelligence feeds
+### 🛠️ System & Management
+- **system_health_check** - Verify platform status when other tools fail
+- **feed_status** - Check threat intelligence feed health
+- **user_quota** - Monitor usage limits and access controls
 
-### User Management (1 tool)
-- **user_quota** - Monitor and manage user quotas, usage limits, and access controls
+## 🧠 Model Size Optimization
+
+### For **Smaller Models** (Claude 3 Haiku, Local LLMs):
+1. Start with `get_tool_recommendation("describe your task")`
+2. Use `discover_recent_threats` for exploration
+3. Try `execute_graph_query` with simple patterns like `"recent threats"` or `"APT29"`
+
+### For **Larger Models** (GPT-4, Claude 3.5 Sonnet):
+- Full access to advanced Cypher queries in `execute_graph_query`
+- Complex natural language processing in `threat_intel_chat`
+- Multi-step analysis workflows
 
 ##  Development
 

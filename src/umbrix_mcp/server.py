@@ -6,21 +6,26 @@ Provides threat intelligence capabilities to AI assistants via MCP protocol
 TOOL SELECTION GUIDE FOR LLMs:
 ===============================
 
-🔍 DISCOVERY & EXPLORATION (VERIFIED GRAPH DATA):
-- discover_recent_threats: Start here! Shows latest activity and data overview
-- system_health_check: Verify platform status when other tools fail
+🤖 TOOL SELECTION HELP (START HERE FOR SMALLER MODELS):
+- get_tool_recommendation: Describes what you want to research → Get personalized tool suggestions
 
-💬 ANALYSIS & INTELLIGENCE (VERIFIED GRAPH DATA):
+🔍 DISCOVERY & EXPLORATION (PERFECT FOR SMALLER MODELS):
+- discover_recent_threats: Start here! Shows latest activity and data overview
+- threat_correlation: Search for any threat entities with simple terms
+- analyze_indicator: Deep analysis of specific IOCs (IPs, domains, hashes)
+
+💬 NATURAL LANGUAGE QUERIES (EASY FOR ANY MODEL):
+- execute_graph_query: Smart tool that converts simple patterns to database queries
+  Examples: "recent threats", "APT29", "192.168.1.1", "ransomware campaigns"
 - threat_intel_chat: Analytical questions using verified graph database only
-- analyze_indicator: Deep analysis of IOCs using direct graph database queries
+
+🎯 SPECIFIC LOOKUPS (FOCUSED TOOLS):
 - get_threat_actor: Detailed profiles from verified graph relationships
 - get_malware_details: Comprehensive malware analysis from graph database
 - get_campaign_details: In-depth campaign intelligence from verified data
 - get_cve_details: Comprehensive CVE analysis with severity and exploitation status
 
-🔧 ADVANCED QUERIES (DIRECT GRAPH ACCESS):
-- execute_graph_query: Direct Cypher queries for custom analysis
-- threat_correlation: Find connections between entities
+📊 SPECIALIZED ANALYSIS (ADVANCED):
 - timeline_analysis: Temporal patterns and activity analysis
 
 📊 SPECIALIZED TOOLS (VALIDATED DATA):
@@ -123,6 +128,147 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
 # Create MCP server instance with lifecycle management
 mcp = FastMCP("umbrix-mcp", lifespan=app_lifespan)
+
+
+@mcp.tool()
+async def get_tool_recommendation(query: str, ctx: Context) -> str:
+    """Get tool recommendations based on your question (perfect for smaller models)
+
+    🤖 SMART TOOL SELECTION - Analyzes your question and suggests the best tool:
+
+    This meta-tool helps smaller models choose the right tool for their needs.
+    Just describe what you want to research and get personalized tool recommendations.
+
+    Examples:
+    - "I want to research APT29" → Suggests get_threat_actor
+    - "Show me recent attacks" → Suggests discover_recent_threats
+    - "Analyze this IP: 1.2.3.4" → Suggests analyze_indicator
+    - "Find malware campaigns" → Suggests execute_graph_query with pattern
+
+    Args:
+        query: Describe what you want to research or analyze
+    """
+    try:
+        query_lower = query.lower()
+        recommendations = []
+
+        # Analysis patterns
+        if any(term in query_lower for term in ["recent", "latest", "new", "today"]):
+            recommendations.append(
+                {
+                    "tool": "discover_recent_threats",
+                    "reason": "Shows latest threat activity and recent indicators",
+                    "example": "discover_recent_threats(days_back=7)",
+                }
+            )
+
+        if any(
+            term in query_lower
+            for term in ["apt", "threat actor", "group", "lazarus", "kimsuky"]
+        ):
+            recommendations.append(
+                {
+                    "tool": "get_threat_actor",
+                    "reason": "Provides detailed threat actor profiles and attribution",
+                    "example": "get_threat_actor(actor_name='APT29')",
+                }
+            )
+
+        # IP/Domain/Hash patterns
+        import re
+
+        if (
+            re.search(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", query)
+            or re.search(
+                r"\b[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}\b", query
+            )
+            or "indicator" in query_lower
+            or "ioc" in query_lower
+        ):
+            recommendations.append(
+                {
+                    "tool": "analyze_indicator",
+                    "reason": "Deep analysis of specific IOCs with threat context",
+                    "example": "analyze_indicator(indicator='192.168.1.1')",
+                }
+            )
+
+        if any(
+            term in query_lower
+            for term in ["malware", "ransomware", "trojan", "family"]
+        ):
+            recommendations.append(
+                {
+                    "tool": "execute_graph_query",
+                    "reason": "Search malware families with natural language",
+                    "example": "execute_graph_query('ransomware families')",
+                }
+            )
+
+        if any(term in query_lower for term in ["campaign", "operation"]):
+            recommendations.append(
+                {
+                    "tool": "get_campaign_details",
+                    "reason": "Detailed campaign analysis and timeline",
+                    "example": "get_campaign_details(campaign_name='Operation XYZ')",
+                }
+            )
+
+        if any(term in query_lower for term in ["cve", "vulnerability", "exploit"]):
+            recommendations.append(
+                {
+                    "tool": "get_cve_details",
+                    "reason": "Comprehensive vulnerability analysis with CVSS scores",
+                    "example": "get_cve_details(cve_id='CVE-2023-1234')",
+                }
+            )
+
+        if any(
+            term in query_lower
+            for term in ["search", "find", "look for", "connection", "relationship"]
+        ):
+            recommendations.append(
+                {
+                    "tool": "threat_correlation",
+                    "reason": "Flexible search across all threat entities",
+                    "example": "threat_correlation(query='Russian threat actors')",
+                }
+            )
+
+        # Natural language patterns
+        if not recommendations or "complex" in query_lower or "custom" in query_lower:
+            recommendations.append(
+                {
+                    "tool": "execute_graph_query",
+                    "reason": "Smart tool that converts natural language to database queries",
+                    "example": "execute_graph_query('recent threats from APT29')",
+                }
+            )
+
+        if not recommendations:
+            recommendations.append(
+                {
+                    "tool": "discover_recent_threats",
+                    "reason": "Good starting point to explore available data",
+                    "example": "discover_recent_threats(days_back=30)",
+                }
+            )
+
+        # Format response
+        response = f"🤖 Tool Recommendations for: '{query}'\n\n"
+
+        for i, rec in enumerate(recommendations, 1):
+            response += f"{i}. **{rec['tool']}**\n"
+            response += f"   💡 {rec['reason']}\n"
+            response += f"   📝 Example: {rec['example']}\n\n"
+
+        response += "💬 **Pro tip**: For complex analysis, start with the first recommendation and then use execute_graph_query for follow-up questions."
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error generating tool recommendation: {e}")
+        return "Error generating recommendations. Try 'discover_recent_threats' as a safe starting point."
 
 
 @mcp.tool()
@@ -413,27 +559,37 @@ async def get_threat_actor(actor_name: str, ctx: Context) -> str:
 
 @mcp.tool()
 async def execute_graph_query(cypher_query: str, ctx: Context) -> str:
-    """Execute direct Cypher queries against the threat intelligence graph database
+    """Execute queries against the threat intelligence graph database
 
-    For advanced users who want to write custom graph database queries.
-    The database contains nodes like ThreatActor, Malware, Campaign, Indicator, Article, etc.
+    🤖 SMART QUERY SUPPORT - Handles both natural language and Cypher:
 
-    Common patterns:
+    📝 SIMPLE PATTERNS (great for smaller models):
+    - "recent threats" → Shows latest activity
+    - "APT29" → Looks up specific threat actor
+    - "192.168.1.1" → Analyzes IP indicator
+    - "ransomware campaigns" → Finds malware campaigns
+    - "count threat actors" → Gets database statistics
+
+    🔧 CYPHER EXAMPLES (advanced users):
     - Find actors: MATCH (t:ThreatActor) WHERE t.name CONTAINS 'APT' RETURN t
     - Find connections: MATCH (a:ThreatActor)-[r]-(b) WHERE a.name = 'APT29' RETURN a,r,b
     - Count data: MATCH (n:Indicator) RETURN count(n)
 
-    For most users, search_threats or discover_recent_threats are easier to use.
-
     Args:
-        cypher_query: Valid Cypher query (e.g., "MATCH (n:ThreatActor) RETURN n.name LIMIT 10")
+        cypher_query: Natural language description OR valid Cypher query
     """
     try:
-        logger.info(f"Executing graph query: {cypher_query}")
+        logger.info(f"Processing query: {cypher_query}")
+
+        # Smart query assistance - convert simple patterns to Cypher
+        processed_query = _convert_simple_patterns_to_cypher(cypher_query)
+
+        if processed_query != cypher_query:
+            logger.info(f"Converted '{cypher_query}' to Cypher: {processed_query}")
 
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/execute_graph_query",
-            json={"cypher_query": cypher_query},
+            json={"cypher_query": processed_query},
         )
         response.raise_for_status()
         result = response.json()
@@ -986,6 +1142,101 @@ async def _try_keyword_search(query: str, limit: int) -> str:
         logger.debug(f"Keyword search failed: {e}")
 
     return None
+
+
+def _convert_simple_patterns_to_cypher(query: str) -> str:
+    """Convert simple natural language patterns to Cypher queries for smaller models"""
+    query_lower = query.lower().strip()
+
+    # Recent threats pattern
+    if "recent threats" in query_lower or "latest threats" in query_lower:
+        return """
+        MATCH (a:Article)-[:MENTIONS]->(i:Indicator)
+        WHERE a.published_date >= datetime() - duration({days: 30})
+        RETURN a.title, a.published_date, i.value, i.type
+        ORDER BY a.published_date DESC 
+        LIMIT 10
+        """
+
+    # Threat actor lookup patterns
+    if any(
+        actor in query_lower
+        for actor in ["apt", "lazarus", "kimsuky", "sandworm", "turla"]
+    ):
+        # Extract actor name
+        actor_name = query.strip()
+        return f"""
+        MATCH (ta:ThreatActor)
+        WHERE toLower(ta.name) CONTAINS toLower('{actor_name}')
+           OR toLower(ta.aliases) CONTAINS toLower('{actor_name}')
+        RETURN ta.name, ta.aliases, ta.description, ta.country
+        LIMIT 5
+        """
+
+    # IP address pattern
+    import re
+
+    ip_pattern = r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"
+    if re.search(ip_pattern, query):
+        ip = re.search(ip_pattern, query).group()
+        return f"""
+        MATCH (i:Indicator)
+        WHERE i.value = '{ip}' AND i.type = 'ip'
+        OPTIONAL MATCH (i)<-[:USES]-(ta:ThreatActor)
+        OPTIONAL MATCH (i)<-[:INDICATES]-(m:Malware)
+        RETURN i.value, i.threat_level, i.confidence,
+               collect(ta.name) as threat_actors,
+               collect(m.name) as malware
+        """
+
+    # Domain pattern
+    domain_pattern = r"\b[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}\b"
+    if re.search(domain_pattern, query) and not query_lower.startswith("match"):
+        domain = re.search(domain_pattern, query).group()
+        return f"""
+        MATCH (i:Indicator)
+        WHERE i.value = '{domain}' AND i.type = 'domain'
+        OPTIONAL MATCH (i)<-[:USES]-(ta:ThreatActor)
+        RETURN i.value, i.threat_level, i.confidence,
+               collect(ta.name) as threat_actors
+        """
+
+    # Malware family search
+    if "ransomware" in query_lower or "malware" in query_lower:
+        malware_type = "ransomware" if "ransomware" in query_lower else "malware"
+        return f"""
+        MATCH (m:Malware)
+        WHERE toLower(m.family) CONTAINS '{malware_type}'
+           OR toLower(m.type) CONTAINS '{malware_type}'
+        OPTIONAL MATCH (m)<-[:USES]-(ta:ThreatActor)
+        RETURN m.name, m.family, m.type,
+               collect(ta.name) as threat_actors
+        LIMIT 10
+        """
+
+    # Count patterns
+    if query_lower.startswith("count "):
+        entity = query_lower.replace("count ", "").strip()
+        if "threat actor" in entity:
+            return "MATCH (ta:ThreatActor) RETURN count(ta) as threat_actor_count"
+        elif "malware" in entity:
+            return "MATCH (m:Malware) RETURN count(m) as malware_count"
+        elif "indicator" in entity:
+            return "MATCH (i:Indicator) RETURN count(i) as indicator_count"
+        elif "campaign" in entity:
+            return "MATCH (c:Campaign) RETURN count(c) as campaign_count"
+
+    # Campaign search
+    if "campaign" in query_lower:
+        return """
+        MATCH (c:Campaign)
+        RETURN c.name, c.description, c.first_seen, c.last_seen
+        ORDER BY c.last_seen DESC
+        LIMIT 10
+        """
+
+    # If no pattern matches, return original query (might be valid Cypher)
+    return query
 
 
 async def _get_basic_database_stats() -> str:
