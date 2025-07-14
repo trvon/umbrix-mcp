@@ -362,9 +362,11 @@ async def threat_correlation(query: str, ctx: Context, limit: int = 10) -> str:
         logger.info(f"Using backend threat_correlation tool: {query}")
 
         # Call the backend threat_correlation tool directly
+        # Convert query string to indicators array format expected by backend
+        indicators = [query.strip()] if query.strip() else []
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/threat_correlation",
-            json={"query": query, "limit": limit},
+            json={"indicators": indicators},
         )
         response.raise_for_status()
         result = response.json()
@@ -2253,9 +2255,18 @@ async def timeline_analysis(
     """
     try:
         logger.info(f"Analyzing timeline for {entity} from {start_date} to {end_date}")
+
+        # Build request with proper nested time_range structure
+        request_data = {"entities": [entity]}
+        if start_date or end_date:
+            request_data["time_range"] = {
+                "start_date": start_date,
+                "end_date": end_date,
+            }
+
         response = await umbrix_client.client.post(
             f"{umbrix_client.base_url}/v1/tools/timeline_analysis",
-            json={"entities": [entity], "start_date": start_date, "end_date": end_date},
+            json=request_data,
         )
         response.raise_for_status()
         result = response.json()
